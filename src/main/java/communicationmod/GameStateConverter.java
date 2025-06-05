@@ -515,6 +515,10 @@ public class GameStateConverter {
         HashMap<String, Object> state = new HashMap<>();
         ArrayList<Object> monsters = new ArrayList<>();
         for(AbstractMonster monster : AbstractDungeon.getCurrRoom().monsters.monsters) {
+            // A monster that has not rolled its move yet still shows the DEBUG intent
+            if (monster.intent == AbstractMonster.Intent.DEBUG) {
+                monster.createIntent();
+            }
             monsters.add(convertMonsterToJson(monster));
         }
         state.put("monsters", monsters);
