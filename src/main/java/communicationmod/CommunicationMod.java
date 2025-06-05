@@ -49,7 +49,7 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
     private static final String VERBOSE_OPTION = "verbose";
     private static final String INITIALIZATION_TIMEOUT_OPTION = "maxInitializationTimeout";
     private static final String DEFAULT_COMMAND = "";
-    private static final long DEFAULT_TIMEOUT = 10L;
+    private static final long DEFAULT_TIMEOUT = 600L;
     private static final boolean DEFAULT_VERBOSITY = true;
 
     public CommunicationMod(){
