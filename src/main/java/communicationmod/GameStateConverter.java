@@ -646,7 +646,39 @@ public class GameStateConverter {
         jsonCard.put("has_target", card.target== AbstractCard.CardTarget.SELF_AND_ENEMY || card.target == AbstractCard.CardTarget.ENEMY);
         jsonCard.put("exhausts", card.exhaust);
         jsonCard.put("ethereal", card.isEthereal);
+        jsonCard.put("description", getCardDescription(card));
         return jsonCard;
+    }
+
+    /**
+     * The card's description with its numbers filled in and the text formatting removed
+     * @param card The card
+     * @return The description text
+     */
+    private static String getCardDescription(AbstractCard card) {
+        String input = card.rawDescription;
+        input = input.replace("!B!", String.valueOf(getValue('B', card)))
+                .replace("!D!", String.valueOf(getValue('D', card)))
+                .replace("!M!", String.valueOf(getValue('M', card)));
+        input = input.replace("[R] [R] [R] [R]", "four energy")
+                .replace("[R] [R] [R]", "three energy")
+                .replace("[R] [R]", "two energy")
+                .replace("[R]", "an energy");
+        input = input.replace(" NL", "\n");
+        input = input.replaceAll("#[rgbyp]", "");
+        return input;
+    }
+
+    private static int getValue(char key, AbstractCard card) {
+        switch (key) {
+            case 'B':
+                return card.isBlockModified ? card.block : card.baseBlock;
+            case 'D':
+                return card.isDamageModified ? card.damage : card.baseDamage;
+            case 'M':
+                return card.isMagicNumberModified ? card.magicNumber : card.baseMagicNumber;
+        }
+        throw new IllegalArgumentException("Invalid key: " + key);
     }
 
     /**
@@ -782,6 +814,7 @@ public class GameStateConverter {
             json_power.put("id", power.ID);
             json_power.put("name", power.name);
             json_power.put("amount", power.amount);
+            json_power.put("description", getPowerDescription(power));
             Object damage = getFieldIfExists(power, "damage");
             if (damage != null) {
                 json_power.put("damage", (int)damage);
@@ -826,6 +859,12 @@ public class GameStateConverter {
         return powers;
     }
 
+    private static String getPowerDescription(AbstractPower power) {
+        String input = power.description;
+        input = input.replaceAll("#[rgbyp]", "");
+        return input;
+    }
+
     /**
      * Creates a GSON-compatible representation of the given relic
      * The relic object contains:
@@ -840,7 +879,19 @@ public class GameStateConverter {
         jsonRelic.put("id", relic.relicId);
         jsonRelic.put("name", relic.name);
         jsonRelic.put("counter", relic.counter);
+        jsonRelic.put("description", getRelicDescription(relic));
         return jsonRelic;
+    }
+
+    private static String getRelicDescription(AbstractRelic relic) {
+        String input = relic.description;
+        input = input.replace("[E] [E] [E] [E]", "four energy")
+                .replace("[E] [E] [E]", "three energy")
+                .replace("[E] [E]", "two energy")
+                .replace("[E]", "an energy");
+        input = input.replace(" NL", "\n");
+        input = input.replaceAll("#[rgbyp]", "");
+        return input;
     }
 
     /**
