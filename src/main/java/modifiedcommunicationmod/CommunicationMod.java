@@ -51,6 +51,24 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
     private static final String DEFAULT_COMMAND = "";
     private static final long DEFAULT_TIMEOUT = 600L;
     private static final boolean DEFAULT_VERBOSITY = true;
+    private static final String INPUT_FILE_OPTION = "input_file_path";
+    private static final String OUTPUT_FILE_OPTION = "output_file_path";
+    private static final String DEFAULT_INPUT_FILE = "communication_mod_input.txt";
+    private static final String DEFAULT_OUTPUT_FILE = "communication_mod_output.txt";
+
+    private static String getInputFilePath() {
+        if (communicationConfig == null) {
+            return DEFAULT_INPUT_FILE;
+        }
+        return communicationConfig.getString(INPUT_FILE_OPTION);
+    }
+
+    private static String getOutputFilePath() {
+        if (communicationConfig == null) {
+            return DEFAULT_OUTPUT_FILE;
+        }
+        return communicationConfig.getString(OUTPUT_FILE_OPTION);
+    }
 
     public CommunicationMod(){
         BaseMod.subscribe(this);
@@ -221,9 +239,10 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
 
     private void startCommunicationThreads() {
         writeQueue = new LinkedBlockingQueue<>();
-        writeThread = new Thread(new DataWriter(writeQueue, listener.getOutputStream(), getVerbosityOption()));
+        readQueue = new LinkedBlockingQueue<>();
+        writeThread = new Thread(new FileDataWriter(writeQueue, getOutputFilePath(), getVerbosityOption()));
         writeThread.start();
-        readThread = new Thread(new DataReader(readQueue, listener.getInputStream(), getVerbosityOption()));
+        readThread = new Thread(new FileDataReader(readQueue, getInputFilePath(), getVerbosityOption()));
         readThread.start();
     }
 
@@ -233,9 +252,12 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
     }
 
     public static void dispose() {
-        logger.info("Shutting down child process...");
-        if(listener != null) {
-            listener.destroy();
+        logger.info("Shutting down communication threads...");
+        if(readThread != null) {
+            readThread.interrupt();
+        }
+        if(writeThread != null) {
+            writeThread.interrupt();
         }
     }
 
@@ -307,49 +329,13 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
         if(writeThread != null) {
             writeThread.interrupt();
         }
-        if(listener != null) {
-            listener.destroy();
-            try {
-                boolean success = listener.waitFor(2, TimeUnit.SECONDS);
-                if (!success) {
-                    listener.destroyForcibly();
-                }
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-                listener.destroyForcibly();
-            }
+        startCommunicationThreads();
+        if (GameStateListener.isWaitingForCommand()) {
+            mustSendGameState = true;
         }
-        ProcessBuilder builder = new ProcessBuilder(getSubprocessCommand());
-        File errorLog = new File("communication_mod_errors.log");
-        builder.redirectError(ProcessBuilder.Redirect.appendTo(errorLog));
-        try {
-            listener = builder.start();
-        } catch (IOException e) {
-            logger.error("Could not start external process.");
-            e.printStackTrace();
-        }
-        if(listener != null) {
-            startCommunicationThreads();
-            // We wait for the child process to signal it is ready before we proceed. Note that the game
-            // will hang while this is occurring, and it will time out after a specified waiting time.
-            String message = readMessageBlocking();
-            if(message == null) {
-                // The child process waited too long to respond, so we kill it.
-                readThread.interrupt();
-                writeThread.interrupt();
-                listener.destroy();
-                logger.error("Timed out while waiting for signal from external process.");
-                logger.error("Check communication_mod_errors.log for stderr from the process.");
-                return false;
-            } else {
-                logger.info(String.format("Received message from external process: %s", message));
-                if (GameStateListener.isWaitingForCommand()) {
-                    mustSendGameState = true;
-                }
-                return true;
-            }
-        }
-        return false;
+        // There is no external process to wait for: the client reads the output file when it is ready.
+        sendMessage("READY");
+        return true;
     }
 
 }
