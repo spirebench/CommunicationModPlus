@@ -776,6 +776,9 @@ public class GameStateConverter {
             orbs.add(convertOrbToJson(orb));
         }
         jsonPlayer.put("orbs", orbs);
+        if (player.stance != null) {
+            jsonPlayer.put("stance", player.stance.ID);
+        }
         return jsonPlayer;
     }
 
