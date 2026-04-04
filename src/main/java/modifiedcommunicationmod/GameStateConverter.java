@@ -644,6 +644,12 @@ public class GameStateConverter {
         }
         if(AbstractDungeon.getMonsters() != null) {
             jsonCard.put("is_playable", card.canUse(AbstractDungeon.player, null));
+            // A gold glow marks a card with a synergy in the current state, e.g. Dropkick on a Vulnerable enemy
+            card.triggerOnGlowCheck();
+            boolean isGlowing = card.glowColor.r > 0.5f && card.glowColor.b < 0.5f;
+            if (isGlowing) {
+                jsonCard.put("is_glowing", true);
+            }
         }
         jsonCard.put("cost", card.costForTurn);
         jsonCard.put("upgrades", card.timesUpgraded);
