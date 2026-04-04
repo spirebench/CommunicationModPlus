@@ -611,6 +611,9 @@ public class GameStateConverter {
     private static HashMap<String, Object> convertMapRoomNodeToJson(MapRoomNode node) {
         HashMap<String, Object> jsonNode = convertCoordinatesToJson(node.x, node.y);
         jsonNode.put("symbol", node.getRoomSymbol(true));
+        if (node.hasEmeraldKey) {
+            jsonNode.put("has_emerald_key", true);
+        }
         return jsonNode;
     }
 
