@@ -554,7 +554,61 @@ public class GameStateConverter {
         state.put("turn", GameActionManager.turn);
         state.put("cards_discarded_this_turn", GameActionManager.totalDiscardedThisTurn);
         state.put("times_damaged", AbstractDungeon.player.damagedThisCombat);
+        ArrayList<HashMap<String, Object>> intermediates = GameStateListener.getAndClearIntermediateStates();
+        if (!intermediates.isEmpty()) {
+            state.put("intermediate_states", intermediates);
+        }
         return state;
+    }
+
+    /**
+     * Capture a compact combat snapshot for the intermediate-state buffer.
+     * Contains only the fields needed to diff combat events between snapshots:
+     * player HP/block/powers/orbs and per-monster HP/block/powers/is_gone.
+     * No piles, potions, relics, deck, energy, or stance — those are already
+     * captured in the regular {@code getCombatState()} call.
+     */
+    public static HashMap<String, Object> captureCompactCombatSnapshot(String label, int monsterIndex, String monsterName) {
+        if (AbstractDungeon.getCurrRoom() == null || AbstractDungeon.getCurrRoom().monsters == null) {
+            return null;
+        }
+        HashMap<String, Object> snapshot = new HashMap<String, Object>();
+        snapshot.put("label", label);
+        snapshot.put("monster_index", monsterIndex);
+        if (monsterName != null) {
+            snapshot.put("monster_name", monsterName);
+        }
+        HashMap<String, Object> player = new HashMap<String, Object>();
+        player.put("current_hp", AbstractDungeon.player.currentHealth);
+        player.put("max_hp", AbstractDungeon.player.maxHealth);
+        player.put("block", AbstractDungeon.player.currentBlock);
+        player.put("powers", convertCreaturePowersToJson(AbstractDungeon.player));
+        ArrayList<HashMap<String, Object>> orbList = new ArrayList<HashMap<String, Object>>();
+        if (AbstractDungeon.player.orbs != null) {
+            for (AbstractOrb orb : AbstractDungeon.player.orbs) {
+                orbList.add(convertOrbToJson(orb));
+            }
+        }
+        player.put("orbs", orbList);
+        if (AbstractDungeon.player.stance != null) {
+            player.put("stance", AbstractDungeon.player.stance.ID);
+        }
+        snapshot.put("player", player);
+        ArrayList<HashMap<String, Object>> monsterList = new ArrayList<HashMap<String, Object>>();
+        for (Object monsterObj : AbstractDungeon.getCurrRoom().monsters.monsters) {
+            AbstractMonster monster = (AbstractMonster)monsterObj;
+            HashMap<String, Object> mstate = new HashMap<String, Object>();
+            mstate.put("name", monster.name);
+            mstate.put("current_hp", monster.currentHealth);
+            mstate.put("max_hp", monster.maxHealth);
+            mstate.put("block", monster.currentBlock);
+            mstate.put("is_gone", monster.isDeadOrEscaped());
+            mstate.put("half_dead", monster.halfDead);
+            mstate.put("powers", convertCreaturePowersToJson(monster));
+            monsterList.add(mstate);
+        }
+        snapshot.put("monsters", monsterList);
+        return snapshot;
     }
 
     /**

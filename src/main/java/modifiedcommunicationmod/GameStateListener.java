@@ -8,6 +8,9 @@ import com.megacrit.cardcrawl.rooms.AbstractRoom;
 import com.megacrit.cardcrawl.rooms.EventRoom;
 import com.megacrit.cardcrawl.rooms.VictoryRoom;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+
 public class GameStateListener {
     private static AbstractDungeon.CurrentScreen previousScreen = null;
     private static boolean previousScreenUp = false;
@@ -21,6 +24,7 @@ public class GameStateListener {
     private static boolean hasPresentedOutOfGameState = false;
     private static boolean waitOneUpdate = false;
     private static int timeout = 0;
+    private static ArrayList<HashMap<String, Object>> intermediateStates = new ArrayList<HashMap<String, Object>>();
 
     /**
      * Used to indicate that something (in game logic, not external command) has been done that will change the game state,
@@ -78,6 +82,32 @@ public class GameStateListener {
     /**
      * Resets all state detection variables for the start of a new run.
      */
+    /**
+     * Capture a compact combat-state snapshot and append it to the
+     * intermediate buffer. Called from EndOfTurnAction and
+     * MonsterTakeTurnPatch so the agent can see per-enemy granularity
+     * for what happened during the enemy turn. The buffer is shipped
+     * with the next regular game-state message (on turn start).
+     */
+    public static void captureIntermediateState(String label, int monsterIndex, String monsterName) {
+        if (!CommandExecutor.isInDungeon()) {
+            return;
+        }
+        if (AbstractDungeon.getCurrRoom() == null || AbstractDungeon.getCurrRoom().phase != AbstractRoom.RoomPhase.COMBAT) {
+            return;
+        }
+        HashMap<String, Object> snapshot = GameStateConverter.captureCompactCombatSnapshot(label, monsterIndex, monsterName);
+        if (snapshot != null) {
+            intermediateStates.add(snapshot);
+        }
+    }
+
+    public static ArrayList<HashMap<String, Object>> getAndClearIntermediateStates() {
+        ArrayList<HashMap<String, Object>> out = intermediateStates;
+        intermediateStates = new ArrayList<HashMap<String, Object>>();
+        return out;
+    }
+
     public static void resetStateVariables() {
         previousScreen = null;
         previousScreenUp = false;
@@ -89,6 +119,7 @@ public class GameStateListener {
         blocked = false;
         waitingForCommand = false;
         waitOneUpdate = false;
+        intermediateStates.clear();
     }
 
     /**
