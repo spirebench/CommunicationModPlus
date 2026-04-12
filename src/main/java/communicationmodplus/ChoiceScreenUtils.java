@@ -151,6 +151,13 @@ public class ChoiceScreenUtils {
             default:
                 return new ArrayList<>();
         }
+        // Match and Keep card names must keep their original casing
+        // so the model sees "Bloodletting" not "bloodletting".
+        if (choiceType == ChoiceType.EVENT
+                && AbstractDungeon.getCurrRoom() != null
+                && AbstractDungeon.getCurrRoom().event instanceof GremlinMatchGame) {
+            return choices;
+        }
         ArrayList<String> lowerCaseChoices = new ArrayList<>();
         for(String item : choices) {
             lowerCaseChoices.add(item.toLowerCase());
