@@ -9,6 +9,7 @@ import com.megacrit.cardcrawl.core.AbstractCreature;
 import com.megacrit.cardcrawl.core.Settings;
 import com.megacrit.cardcrawl.dungeons.AbstractDungeon;
 import com.megacrit.cardcrawl.events.AbstractEvent;
+import com.megacrit.cardcrawl.events.shrines.GremlinMatchGame;
 import com.megacrit.cardcrawl.map.MapEdge;
 import com.megacrit.cardcrawl.map.MapRoomNode;
 import com.megacrit.cardcrawl.monsters.AbstractMonster;
@@ -31,6 +32,7 @@ import com.megacrit.cardcrawl.shop.StorePotion;
 import com.megacrit.cardcrawl.shop.StoreRelic;
 import com.megacrit.cardcrawl.ui.buttons.LargeDialogOptionButton;
 import com.megacrit.cardcrawl.ui.panels.EnergyPanel;
+import communicationmodplus.patches.GremlinMatchGamePatch;
 import communicationmodplus.patches.UpdateBodyTextPatch;
 
 import java.lang.reflect.Field;
@@ -238,6 +240,14 @@ public class GameStateConverter {
             state.put("event_id", ReflectionHacks.getPrivateStatic(event.getClass(), "ID"));
         }
         state.put("options", options);
+        if (event instanceof GremlinMatchGame
+                && GremlinMatchGamePatch.lastFlippedPosition >= 0
+                && GremlinMatchGamePatch.lastFlippedName != null) {
+            HashMap<String, Object> lastFlip = new HashMap<String, Object>();
+            lastFlip.put("position", GremlinMatchGamePatch.lastFlippedPosition);
+            lastFlip.put("card_name", GremlinMatchGamePatch.lastFlippedName);
+            state.put("last_flip", lastFlip);
+        }
         return state;
     }
 

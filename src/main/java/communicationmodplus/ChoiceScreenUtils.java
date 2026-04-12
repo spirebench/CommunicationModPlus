@@ -800,7 +800,7 @@ public class ChoiceScreenUtils {
         } else if(AbstractDungeon.getCurrRoom().event instanceof GremlinMatchGame) {
             ArrayList<AbstractCard> pickableCards = GremlinMatchGamePatch.getOrderedCards();
             for (AbstractCard c : pickableCards) {
-                if (GremlinMatchGamePatch.revealedCards.contains(c.uuid)) {
+                if (!c.isFlipped) {
                     choiceList.add(c.cardID);
                 } else {
                     choiceList.add(String.format("card%d", GremlinMatchGamePatch.cardPositions.get(c.uuid)));

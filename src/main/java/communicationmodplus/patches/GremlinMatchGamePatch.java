@@ -18,12 +18,12 @@ public class GremlinMatchGamePatch {
 
     public static HashMap<UUID, Integer> cardPositions;
     public static CardGroup cards;
-    public static Set<UUID> revealedCards;
+    public static int lastFlippedPosition = -1;
+    public static String lastFlippedName = null;
 
     public static ArrayList<AbstractCard> getOrderedCards() {
         ArrayList<AbstractCard> returnedCards = new ArrayList<>(cards.group);
         returnedCards.sort(Comparator.comparingInt(c -> cardPositions.get(c.uuid)));
-        returnedCards.removeIf(c -> !c.isFlipped);
         return returnedCards;
     }
 
@@ -35,11 +35,12 @@ public class GremlinMatchGamePatch {
 
         public static void Postfix(GremlinMatchGame _instance) {
             cards = (CardGroup) ReflectionHacks.getPrivate(_instance, GremlinMatchGame.class, "cards");
-            revealedCards = new HashSet<>();
             // If 0 is top left and 11 is bottom right, the positions of the cards in the result array are:
             // [0, 5, 10, 3, 4, 9, 2, 7, 8, 1, 6, 11]. We want to store the initial positions for easy reference.
             // Cards can be removed from the card group, so it is easier to just calculate them at the start.
             cardPositions = new HashMap<>();
+            lastFlippedPosition = -1;
+            lastFlippedName = null;
             for(int i = 0; i < 12; i++) {
                 AbstractCard currentCard = cards.group.get(i);
                 int target_x = i % 4;
@@ -68,6 +69,8 @@ public class GremlinMatchGamePatch {
                 if (c.equals(hoverCard)) {
                     c.hb.hovered = true;
                     InputHelper.justClickedLeft = true;
+                    lastFlippedPosition = cardPositions.get(c.uuid);
+                    lastFlippedName = c.name;
                     doHover = false;
                 } else {
                     c.hb.hovered = false;
@@ -113,29 +116,6 @@ public class GremlinMatchGamePatch {
             }
         }
 
-    }
-
-    @SpirePatch(
-            clz=GremlinMatchGame.class,
-            method="updateMatchGameLogic"
-    )
-    public static class CardIdentificationPatch {
-
-        @SpireInsertPatch(
-                locator=Locator.class,
-                localvars = {"c"}
-        )
-        public static void Insert(GremlinMatchGame _instance, AbstractCard c) {
-            revealedCards.add(c.uuid);
-        }
-
-        private static class Locator extends SpireInsertLocator {
-            public int[] Locate(CtBehavior ctMethodToPatch) throws CannotCompileException, PatchingException {
-                Matcher matcher = new Matcher.FieldAccessMatcher(AbstractCard.class, "isFlipped");
-                int[] matches = LineFinder.findAllInOrder(ctMethodToPatch, new ArrayList<Matcher>(), matcher);
-                return Arrays.copyOfRange(matches, 1, 2);
-            }
-        }
     }
 
     @SpirePatch(
