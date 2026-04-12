@@ -801,7 +801,7 @@ public class ChoiceScreenUtils {
             ArrayList<AbstractCard> pickableCards = GremlinMatchGamePatch.getOrderedCards();
             for (AbstractCard c : pickableCards) {
                 if (!c.isFlipped) {
-                    choiceList.add(c.cardID);
+                    choiceList.add(c.name);
                 } else {
                     choiceList.add(String.format("card%d", GremlinMatchGamePatch.cardPositions.get(c.uuid)));
                 }
