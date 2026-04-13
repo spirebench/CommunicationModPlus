@@ -33,17 +33,10 @@ import communicationmodplus.GameStateListener;
 public class MonsterTakeTurnPatch {
     @SpireInsertPatch(locator=Locator.class, localvars={"m"})
     public static void Insert(GameActionManager _instance, AbstractMonster m) {
-        int index = -1;
-        if (AbstractDungeon.getCurrRoom() != null && AbstractDungeon.getCurrRoom().monsters != null) {
-            ArrayList monsters = AbstractDungeon.getCurrRoom().monsters.monsters;
-            for (int i = 0; i < monsters.size(); i++) {
-                if (monsters.get(i) == m) {
-                    index = i;
-                    break;
-                }
-            }
-        }
-        GameStateListener.captureIntermediateState("pre_monster_turn", index, m.name);
+        // Disabled: the Insert fires at the wrong bytecode offset when other
+        // mods (BaseMod, StSLib) inject code with takeTurn references into
+        // getNextAction(). The pre_monster_turn snapshot is now captured via
+        // BaseMod's PreMonsterTurnSubscriber in CommunicationMod instead.
     }
 
     private static class Locator
@@ -52,8 +45,28 @@ public class MonsterTakeTurnPatch {
         }
 
         public int[] Locate(CtBehavior ctMethodToPatch) throws CannotCompileException, PatchingException {
-            Matcher.MethodCallMatcher matcher = new Matcher.MethodCallMatcher(AbstractMonster.class, "takeTurn");
-            return LineFinder.findInOrder(ctMethodToPatch, new ArrayList(), matcher);
+            // Match the takeTurn() → applyTurnPowers() sequence — this pair
+            // only exists at the original monster-phase call site in
+            // getNextAction(). Other mods (BaseMod, StSLib) inject code
+            // containing takeTurn references elsewhere in the method; a
+            // single-matcher Locator can't distinguish them. By requiring
+            // takeTurn as an "expected" predecessor and targeting
+            // applyTurnPowers, findInOrder anchors to the unique sequence.
+            // The Insert fires before the returned target (applyTurnPowers),
+            // but since our Insert is before takeTurn (the expected match),
+            // we use the expected list approach: the returned offset is for
+            // the first match in the expected list that precedes the target.
+            //
+            // Actually, findInOrder(ctMethod, expectedList, finalMatcher)
+            // returns the line of the FINAL matcher. We want to insert
+            // before takeTurn, not before applyTurnPowers. So we put
+            // takeTurn as the sole expected matcher and use
+            // findAllInOrder(ctMethod, expected, applyTurnPowers) to find
+            // the takeTurn that is followed by applyTurnPowers.
+            ArrayList expected = new ArrayList();
+            expected.add(new Matcher.MethodCallMatcher(AbstractMonster.class, "takeTurn"));
+            Matcher finalMatcher = new Matcher.MethodCallMatcher(AbstractMonster.class, "applyTurnPowers");
+            return LineFinder.findInOrder(ctMethodToPatch, expected, finalMatcher);
         }
     }
 }

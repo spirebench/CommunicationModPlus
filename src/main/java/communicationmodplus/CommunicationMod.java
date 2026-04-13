@@ -4,12 +4,14 @@ import basemod.*;
 import basemod.interfaces.PostDungeonUpdateSubscriber;
 import basemod.interfaces.PostInitializeSubscriber;
 import basemod.interfaces.PostUpdateSubscriber;
+import basemod.interfaces.PreMonsterTurnSubscriber;
 import basemod.interfaces.PreUpdateSubscriber;
 import com.evacipated.cardcrawl.modthespire.lib.SpireConfig;
 import com.evacipated.cardcrawl.modthespire.lib.SpireInitializer;
 import com.google.gson.Gson;
 import com.megacrit.cardcrawl.core.Settings;
 import com.megacrit.cardcrawl.dungeons.AbstractDungeon;
+import com.megacrit.cardcrawl.monsters.AbstractMonster;
 import com.megacrit.cardcrawl.helpers.FontHelper;
 import com.megacrit.cardcrawl.helpers.ImageMaster;
 import communicationmodplus.patches.InputActionPatch;
@@ -27,7 +29,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 @SpireInitializer
-public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSubscriber, PostDungeonUpdateSubscriber, PreUpdateSubscriber, OnStateChangeSubscriber {
+public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSubscriber, PostDungeonUpdateSubscriber, PreUpdateSubscriber, PreMonsterTurnSubscriber, OnStateChangeSubscriber {
 
     private static Process listener;
     private static StringBuilder inputBuffer = new StringBuilder();
@@ -163,6 +165,26 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
         if(AbstractDungeon.getCurrRoom().isBattleOver) {
             GameStateListener.signalTurnEnd();
         }
+    }
+
+    public boolean receivePreMonsterTurn(AbstractMonster m) {
+        // Capture a per-monster intermediate snapshot for the agent's
+        // per-enemy action attribution. BaseMod fires this callback
+        // once per monster, just before each monster's takeTurn().
+        // This replaces the fragile @SpireInsertPatch on getNextAction()
+        // which broke when other mods injected code with takeTurn references.
+        int index = -1;
+        if (AbstractDungeon.getCurrRoom() != null && AbstractDungeon.getCurrRoom().monsters != null) {
+            java.util.ArrayList monsters = AbstractDungeon.getCurrRoom().monsters.monsters;
+            for (int i = 0; i < monsters.size(); i++) {
+                if (monsters.get(i) == m) {
+                    index = i;
+                    break;
+                }
+            }
+        }
+        GameStateListener.captureIntermediateState("pre_monster_turn", index, m.name);
+        return true;
     }
 
     private void setUpOptionsMenu() {
