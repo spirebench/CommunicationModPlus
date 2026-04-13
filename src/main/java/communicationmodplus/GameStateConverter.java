@@ -564,9 +564,16 @@ public class GameStateConverter {
         state.put("turn", GameActionManager.turn);
         state.put("cards_discarded_this_turn", GameActionManager.totalDiscardedThisTurn);
         state.put("times_damaged", AbstractDungeon.player.damagedThisCombat);
-        ArrayList<HashMap<String, Object>> intermediates = GameStateListener.getAndClearIntermediateStates();
-        if (!intermediates.isEmpty()) {
-            state.put("intermediate_states", intermediates);
+        // Only deliver (and clear) intermediate snapshots when the game is
+        // ready for the agent's next command. During animations the game
+        // sends many state updates; delivering intermediates on those would
+        // flush the buffer before all per-monster snapshots have been
+        // captured, breaking per-enemy attribution on the Python side.
+        if (GameStateListener.isWaitingForCommand()) {
+            ArrayList<HashMap<String, Object>> intermediates = GameStateListener.getAndClearIntermediateStates();
+            if (!intermediates.isEmpty()) {
+                state.put("intermediate_states", intermediates);
+            }
         }
         return state;
     }
