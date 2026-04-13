@@ -11,6 +11,8 @@ import com.megacrit.cardcrawl.core.Settings;
 import com.megacrit.cardcrawl.dungeons.AbstractDungeon;
 import com.megacrit.cardcrawl.helpers.SeedHelper;
 import com.megacrit.cardcrawl.helpers.TrialHelper;
+import com.megacrit.cardcrawl.saveAndContinue.SaveAndContinue;
+import com.megacrit.cardcrawl.saveAndContinue.SaveFile;
 import com.megacrit.cardcrawl.helpers.input.InputAction;
 import com.megacrit.cardcrawl.helpers.input.InputActionSet;
 import com.megacrit.cardcrawl.helpers.input.InputHelper;
@@ -66,6 +68,9 @@ public class CommandExecutor {
             case "start":
                 executeStartCommand(tokens);
                 return true;
+            case "continue":
+                executeContinueCommand(tokens);
+                return true;
             case "state":
                 executeStateCommand();
                 return false;
@@ -107,6 +112,7 @@ public class CommandExecutor {
         }
         if (isStartCommandAvailable()) {
             availableCommands.add("start");
+            availableCommands.add("continue");
         }
         if (isInDungeon()) {
             availableCommands.add("key");
@@ -183,6 +189,37 @@ public class CommandExecutor {
         } else {
             return false;
         }
+    }
+
+    private static void executeContinueCommand(String[] tokens) throws InvalidCommandException {
+        if (tokens.length < 2) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.MISSING_ARGUMENT);
+        }
+        AbstractPlayer.PlayerClass selectedClass = null;
+        for (AbstractPlayer.PlayerClass playerClass : AbstractPlayer.PlayerClass.values()) {
+            if (!playerClass.name().equalsIgnoreCase(tokens[1])) continue;
+            selectedClass = playerClass;
+        }
+        if (tokens[1].equalsIgnoreCase("silent")) {
+            selectedClass = AbstractPlayer.PlayerClass.THE_SILENT;
+        }
+        if (selectedClass == null) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens[1]);
+        }
+        SaveFile saveFile = SaveAndContinue.loadSaveFile(selectedClass);
+        if (saveFile == null) {
+            throw new InvalidCommandException("No save file found for " + selectedClass.name());
+        }
+        CardCrawlGame.chosenCharacter = selectedClass;
+        CardCrawlGame.saveFile = saveFile;
+        CardCrawlGame.loadingSave = true;
+        CardCrawlGame.mainMenuScreen.isFadingOut = true;
+        CardCrawlGame.mainMenuScreen.fadeOutMusic();
+        CharacterManager manager = new CharacterManager();
+        manager.setChosenCharacter(selectedClass);
+        AbstractDungeon.ascensionLevel = saveFile.ascension_level;
+        AbstractDungeon.isAscensionMode = saveFile.ascension_level > 0;
+        GameStateListener.resetStateVariables();
     }
 
     public static boolean isStartCommandAvailable() {
