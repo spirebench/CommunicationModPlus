@@ -201,6 +201,13 @@ public class GameStateConverter {
         ChoiceScreenUtils.EventDialogType eventDialogType = ChoiceScreenUtils.getEventDialogType();
         AbstractEvent event = AbstractDungeon.getCurrRoom().event;
         int choice_index = 0;
+        String storedBody = "";
+        try {
+            storedBody = (String) ReflectionHacks.getPrivate(event, AbstractEvent.class, "body");
+            if (storedBody == null) storedBody = "";
+        } catch (Throwable t) {
+            storedBody = "";
+        }
         if (eventDialogType == ChoiceScreenUtils.EventDialogType.IMAGE || eventDialogType == ChoiceScreenUtils.EventDialogType.ROOM) {
             for (LargeDialogOptionButton button : ChoiceScreenUtils.getEventButtons()) {
                 HashMap<String, Object> json_button = new HashMap<>();
@@ -213,7 +220,14 @@ public class GameStateConverter {
                 }
                 options.add(json_button);
             }
-            state.put("body_text", removeTextFormatting(UpdateBodyTextPatch.bodyText));
+            String patchBody = UpdateBodyTextPatch.bodyText;
+            if (patchBody == null) patchBody = "";
+            // Fall back to the event's stored body field when the
+            // updateBodyText hook hasn't fired yet (happens on auto-skipped
+            // single-option intros where the agent reads state before the
+            // dialog's first show() call runs).
+            String bodyOut = patchBody.isEmpty() ? storedBody : patchBody;
+            state.put("body_text", removeTextFormatting(bodyOut));
         } else {
             for (String misc_option : ChoiceScreenUtils.getEventScreenChoices()) {
                 HashMap<String, Object> json_button = new HashMap<>();
