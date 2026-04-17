@@ -4,6 +4,7 @@ import basemod.ReflectionHacks;
 import com.google.gson.Gson;
 import com.megacrit.cardcrawl.actions.GameActionManager;
 import com.megacrit.cardcrawl.cards.AbstractCard;
+import com.megacrit.cardcrawl.cards.CardGroup;
 import com.megacrit.cardcrawl.characters.AbstractPlayer;
 import com.megacrit.cardcrawl.core.AbstractCreature;
 import com.megacrit.cardcrawl.core.Settings;
@@ -639,7 +640,32 @@ public class GameStateConverter {
             monsterList.add(mstate);
         }
         snapshot.put("monsters", monsterList);
+        // Compact pile captures so per-enemy attribution can diff pile
+        // changes between consecutive intermediates. Only name + uuid
+        // are retained — the full card JSON isn't needed for diffing
+        // and would bloat the intermediate buffer. Hand/draw/exhaust
+        // are included alongside discard so future enemy-added-to-hand
+        // effects (Writhing Mass, Slaver encasement) also attribute
+        // correctly.
+        snapshot.put("discard_pile", compactPileSnapshot(AbstractDungeon.player.discardPile));
+        snapshot.put("hand", compactPileSnapshot(AbstractDungeon.player.hand));
+        snapshot.put("draw_pile", compactPileSnapshot(AbstractDungeon.player.drawPile));
+        snapshot.put("exhaust_pile", compactPileSnapshot(AbstractDungeon.player.exhaustPile));
         return snapshot;
+    }
+
+    private static ArrayList<HashMap<String, Object>> compactPileSnapshot(CardGroup group) {
+        ArrayList<HashMap<String, Object>> out = new ArrayList<HashMap<String, Object>>();
+        if (group == null || group.group == null) {
+            return out;
+        }
+        for (AbstractCard c : group.group) {
+            HashMap<String, Object> entry = new HashMap<String, Object>();
+            entry.put("name", c.name);
+            entry.put("uuid", c.uuid.toString());
+            out.add(entry);
+        }
+        return out;
     }
 
     /**
