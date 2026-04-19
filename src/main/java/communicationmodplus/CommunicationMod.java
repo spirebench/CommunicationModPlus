@@ -82,7 +82,40 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
             defaults.put(GAME_START_OPTION, Boolean.toString(false));
             defaults.put(INITIALIZATION_TIMEOUT_OPTION, Long.toString(DEFAULT_TIMEOUT));
             defaults.put(VERBOSE_OPTION, Boolean.toString(DEFAULT_VERBOSITY));
-            communicationConfig = new SpireConfig("CommunicationMod", "config", defaults);
+            communicationConfig = new SpireConfig("CommunicationModPlus", "config", defaults);
+            // One-time migration from the upstream CommunicationMod config dir.
+            // Earlier builds of this fork (and vanilla CommunicationMod) wrote
+            // ~/.config/ModTheSpire/CommunicationMod/config.properties; on
+            // first launch with the new dir we copy any user-set keys forward
+            // so paths and runAtGameStart don't silently revert to defaults.
+            try {
+                SpireConfig oldConfig = new SpireConfig("CommunicationMod", "config");
+                boolean migrated = false;
+                for (String key : new String[]{INPUT_FILE_OPTION, OUTPUT_FILE_OPTION, COMMAND_OPTION}) {
+                    if (oldConfig.has(key) && !communicationConfig.has(key)) {
+                        communicationConfig.setString(key, oldConfig.getString(key));
+                        migrated = true;
+                    }
+                }
+                if (oldConfig.has(GAME_START_OPTION) && !communicationConfig.has(GAME_START_OPTION)) {
+                    communicationConfig.setBool(GAME_START_OPTION, oldConfig.getBool(GAME_START_OPTION));
+                    migrated = true;
+                }
+                if (oldConfig.has(VERBOSE_OPTION) && !communicationConfig.has(VERBOSE_OPTION)) {
+                    communicationConfig.setBool(VERBOSE_OPTION, oldConfig.getBool(VERBOSE_OPTION));
+                    migrated = true;
+                }
+                if (oldConfig.has(INITIALIZATION_TIMEOUT_OPTION) && !communicationConfig.has(INITIALIZATION_TIMEOUT_OPTION)) {
+                    communicationConfig.setInt(INITIALIZATION_TIMEOUT_OPTION, oldConfig.getInt(INITIALIZATION_TIMEOUT_OPTION));
+                    migrated = true;
+                }
+                if (migrated) {
+                    logger.info("Migrated config from CommunicationMod/ to CommunicationModPlus/.");
+                }
+            }
+            catch (IOException e) {
+                // No legacy config to migrate from - that's fine.
+            }
             String command = communicationConfig.getString(COMMAND_OPTION);
             // I want this to always be saved to the file so people can set it more easily.
             if (command == null) {
