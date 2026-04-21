@@ -14,6 +14,7 @@ import com.megacrit.cardcrawl.dungeons.AbstractDungeon;
 import com.megacrit.cardcrawl.monsters.AbstractMonster;
 import com.megacrit.cardcrawl.helpers.FontHelper;
 import com.megacrit.cardcrawl.helpers.ImageMaster;
+import com.megacrit.cardcrawl.helpers.TipTracker;
 import communicationmodplus.patches.InputActionPatch;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -178,6 +179,17 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
 
     public void receivePostInitialize() {
         setUpOptionsMenu();
+        // Suppress first-time-user tutorial popups. Fresh profiles (no
+        // preferences/STSTips) otherwise stall on the first-combat tip:
+        // AbstractDungeon.screen becomes FTUE with isScreenUp=true, no
+        // game commands are exposed, and the external agent polls state
+        // forever. Writing a pre-dismissed STSTips file doesn't work
+        // reliably because the game's Prefs layer writes back to the
+        // same file during startup; calling disableAllFtues() here sets
+        // every tip key to true in-memory at mod load, before the first
+        // dungeon is entered.
+        TipTracker.disableAllFtues();
+        logger.info("Disabled all FTUE tips (fresh-profile workaround).");
     }
 
     public void receivePostUpdate() {
