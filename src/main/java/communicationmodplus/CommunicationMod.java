@@ -189,7 +189,20 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
         // every tip key to true in-memory at mod load, before the first
         // dungeon is entered.
         TipTracker.disableAllFtues();
-        logger.info("Disabled all FTUE tips (fresh-profile workaround).");
+        // disableAllFtues() does NOT cover NEOW_SKIP or NEOW_INTRO, and
+        // both default to false on fresh profiles. With NEOW_SKIP=false,
+        // Exordium's constructor places an EmptyRoom (not NeowRoom) at
+        // currMapNode and CardCrawlGame.update() calls
+        // dungeonMapScreen.open(true) immediately on dungeon entry —
+        // skipping Neow's blessing dialog entirely and dropping the
+        // player onto Act 1's map with neow_bonus='' and
+        // chose_neow_reward=false. This matters here because every
+        // experiment run wipes its ephemeral worker dir (and thus the
+        // STSTips prefs file), so without this every run is effectively
+        // a "first-ever" profile that skips Neow.
+        TipTracker.neverShowAgain("NEOW_SKIP");
+        TipTracker.neverShowAgain("NEOW_INTRO");
+        logger.info("Disabled all FTUE tips and Neow skip/intro markers (fresh-profile workaround).");
     }
 
     public void receivePostUpdate() {
