@@ -451,6 +451,13 @@ public class GameStateConverter {
         ArrayList<AbstractCard> handCards = AbstractDungeon.player.hand.group;
         // As far as I can tell, this comment is a Java 8 analogue of a Python list comprehension? I think just looping is more readable.
         // handJson = handCards.stream().map(GameStateConverter::convertCardToJson).collect(Collectors.toCollection(ArrayList::new));
+        // Same refresh as getCombatState(): a HAND_SELECT opened mid-combat
+        // (e.g. an Armaments-style grid) otherwise serializes the hand with
+        // pre-power-gain damage/block. Out of combat the hand is empty and
+        // this loop is a no-op.
+        for (Object handObj : handCards) {
+            ((AbstractCard)handObj).applyPowers();
+        }
         for(AbstractCard card : handCards) {
             handJson.add(convertCardToJson(card));
         }
@@ -560,6 +567,20 @@ public class GameStateConverter {
             exhaust_pile.add(convertCardToJson(card));
         }
         ArrayList<Object> hand = new ArrayList<>();
+        // Refresh hand-card damage/block against the player's current
+        // powers before serializing. The game recomputes these lazily in
+        // its render loop, so a power gained mid-turn (e.g. Strength from
+        // a card played earlier this same turn) otherwise serializes with
+        // the previous power state's numbers: the powers block said
+        // Strength 6 while the hand still showed Strength-3 damage, and
+        // the agent planned lethal off the stale numbers. applyPowers()
+        // is the vanilla pathway the render loop uses (CardGroup
+        // .applyPowers), so this makes the JSON match what a human
+        // player sees on screen. Piles other than the hand keep their
+        // unrefreshed values, matching the game's own pile views.
+        for (Object handObj : AbstractDungeon.player.hand.group) {
+            ((AbstractCard)handObj).applyPowers();
+        }
         for(AbstractCard card : AbstractDungeon.player.hand.group) {
             hand.add(convertCardToJson(card));
         }
