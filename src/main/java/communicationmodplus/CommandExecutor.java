@@ -9,6 +9,7 @@ import com.megacrit.cardcrawl.characters.CharacterManager;
 import com.megacrit.cardcrawl.core.CardCrawlGame;
 import com.megacrit.cardcrawl.core.Settings;
 import com.megacrit.cardcrawl.dungeons.AbstractDungeon;
+import com.megacrit.cardcrawl.helpers.RelicLibrary;
 import com.megacrit.cardcrawl.helpers.SeedHelper;
 import com.megacrit.cardcrawl.helpers.TrialHelper;
 import com.megacrit.cardcrawl.saveAndContinue.SaveAndContinue;
@@ -83,6 +84,9 @@ public class CommandExecutor {
             case "wait":
                 executeWaitCommand(tokens);
                 return true;
+            case "relic":
+                executeRelicCommand(tokens, command_tail.trim());
+                return true;
 
             default:
                 logger.info("This should never happen.");
@@ -124,6 +128,11 @@ public class CommandExecutor {
     }
 
     public static boolean isCommandAvailable(String command) {
+        if (command.equals("relic")) {
+            // A test hook, not a move: deliberately left out of
+            // available_commands so nothing that reads that list offers it.
+            return isInDungeon();
+        }
         if(command.equals("confirm") || command.equalsIgnoreCase("proceed")) {
             return isConfirmCommandAvailable();
         } else if (command.equals("skip") || command.equals("cancel") || command.equals("return") || command.equals("leave")) {
@@ -503,6 +512,52 @@ public class CommandExecutor {
             throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.OUT_OF_BOUNDS, tokens[1]);
         }
         GameStateListener.setTimeout(timeout);
+    }
+
+    /*
+     * relic <relic id>: obtain a relic, as BaseMod's "relic add" console
+     * command does, and take it out of the dungeon's relic pools so it is not
+     * offered a second time. Used by the harness to test what particular
+     * relics do to it (AASTS_RELIC_GIFTS). The id is matched ignoring case,
+     * since every command is lowercased on arrival.
+     */
+    private static void executeRelicCommand(String[] tokens, String relicName) throws InvalidCommandException {
+        if (relicName.isEmpty()) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.MISSING_ARGUMENT);
+        }
+        AbstractRelic found = null;
+        ArrayList<ArrayList<AbstractRelic>> lists = new ArrayList<ArrayList<AbstractRelic>>();
+        lists.add(RelicLibrary.starterList);
+        lists.add(RelicLibrary.commonList);
+        lists.add(RelicLibrary.uncommonList);
+        lists.add(RelicLibrary.rareList);
+        lists.add(RelicLibrary.bossList);
+        lists.add(RelicLibrary.specialList);
+        lists.add(RelicLibrary.shopList);
+        lists.add(RelicLibrary.redList);
+        lists.add(RelicLibrary.greenList);
+        lists.add(RelicLibrary.blueList);
+        lists.add(RelicLibrary.whiteList);
+        for (ArrayList<AbstractRelic> list : lists) {
+            for (AbstractRelic candidate : list) {
+                if (!candidate.relicId.equalsIgnoreCase(relicName)) continue;
+                found = candidate;
+                break;
+            }
+            if (found != null) break;
+        }
+        if (found == null) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, relicName);
+        }
+        AbstractDungeon.commonRelicPool.remove(found.relicId);
+        AbstractDungeon.uncommonRelicPool.remove(found.relicId);
+        AbstractDungeon.rareRelicPool.remove(found.relicId);
+        AbstractDungeon.bossRelicPool.remove(found.relicId);
+        AbstractDungeon.shopRelicPool.remove(found.relicId);
+        AbstractDungeon.getCurrRoom().spawnRelicAndObtain((float)(Settings.WIDTH / 2), (float)(Settings.HEIGHT / 2), found.makeCopy());
+        // Report once the relic has settled, whether or not obtaining it
+        // changed anything the state listener watches.
+        GameStateListener.setTimeout(30);
     }
 
     private static int getKeycode(String keyName) {
