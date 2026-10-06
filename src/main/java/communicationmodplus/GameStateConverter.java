@@ -635,11 +635,14 @@ public class GameStateConverter {
         player.put("current_hp", AbstractDungeon.player.currentHealth);
         player.put("max_hp", AbstractDungeon.player.maxHealth);
         player.put("block", AbstractDungeon.player.currentBlock);
-        player.put("powers", convertCreaturePowersToJson(AbstractDungeon.player));
+        // A Looter or Mugger steals gold during its own turn; without this
+        // the agent could not attribute the theft to the monster that did it.
+        player.put("gold", AbstractDungeon.player.gold);
+        player.put("powers", GameStateConverter.convertCreaturePowersToJson((AbstractCreature)AbstractDungeon.player));
         ArrayList<HashMap<String, Object>> orbList = new ArrayList<HashMap<String, Object>>();
         if (AbstractDungeon.player.orbs != null) {
             for (AbstractOrb orb : AbstractDungeon.player.orbs) {
-                orbList.add(convertOrbToJson(orb));
+                orbList.add(GameStateConverter.convertOrbToJson(orb));
             }
         }
         player.put("orbs", orbList);
@@ -657,7 +660,7 @@ public class GameStateConverter {
             mstate.put("block", monster.currentBlock);
             mstate.put("is_gone", monster.isDeadOrEscaped());
             mstate.put("half_dead", monster.halfDead);
-            mstate.put("powers", convertCreaturePowersToJson(monster));
+            mstate.put("powers", GameStateConverter.convertCreaturePowersToJson((AbstractCreature)monster));
             monsterList.add(mstate);
         }
         snapshot.put("monsters", monsterList);
@@ -668,10 +671,10 @@ public class GameStateConverter {
         // are included alongside discard so future enemy-added-to-hand
         // effects (Writhing Mass, Slaver encasement) also attribute
         // correctly.
-        snapshot.put("discard_pile", compactPileSnapshot(AbstractDungeon.player.discardPile));
-        snapshot.put("hand", compactPileSnapshot(AbstractDungeon.player.hand));
-        snapshot.put("draw_pile", compactPileSnapshot(AbstractDungeon.player.drawPile));
-        snapshot.put("exhaust_pile", compactPileSnapshot(AbstractDungeon.player.exhaustPile));
+        snapshot.put("discard_pile", GameStateConverter.compactPileSnapshot(AbstractDungeon.player.discardPile));
+        snapshot.put("hand", GameStateConverter.compactPileSnapshot(AbstractDungeon.player.hand));
+        snapshot.put("draw_pile", GameStateConverter.compactPileSnapshot(AbstractDungeon.player.drawPile));
+        snapshot.put("exhaust_pile", GameStateConverter.compactPileSnapshot(AbstractDungeon.player.exhaustPile));
         return snapshot;
     }
 
