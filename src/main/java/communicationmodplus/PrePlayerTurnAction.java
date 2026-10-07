@@ -7,10 +7,10 @@
  * Vulnerable/Weak decay, etc.) have resolved — so the snapshot
  * captures the clean post-enemy-phase state.
  *
- * Block reset and energy refill happen synchronously in the same
- * getNextAction() call (before the queue drains), so the snapshot
- * includes those changes. The Python consumer already filters block
- * resets and energy refills from the start-of-turn section.
+ * The player's Block reset and energy refill happen synchronously in the
+ * same getNextAction() call (before the queue drains), so the snapshot
+ * includes those changes; post_block_reset (PostBlockResetPatch) holds
+ * the Block the player kept, before the queued end-of-round effects.
  */
 package communicationmodplus;
 

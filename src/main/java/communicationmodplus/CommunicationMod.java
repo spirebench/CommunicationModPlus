@@ -225,6 +225,10 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
         }
     }
 
+    public static void logIntermediatesMissing(int turn, int lastDeliveredTurn, java.util.List<String> skipped) {
+        logger.info("No intermediate snapshots for turn " + turn + " (last delivered on turn " + lastDeliveredTurn + "); skipped captures: " + skipped);
+    }
+
     public boolean receivePreMonsterTurn(AbstractMonster m) {
         // Capture a per-monster intermediate snapshot for the agent's
         // per-enemy action attribution. BaseMod fires this callback

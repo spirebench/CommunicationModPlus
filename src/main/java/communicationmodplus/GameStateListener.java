@@ -25,13 +25,11 @@ public class GameStateListener {
     private static boolean waitOneUpdate = false;
     private static int timeout = 0;
     private static ArrayList<HashMap<String, Object>> intermediateStates = new ArrayList<HashMap<String, Object>>();
-    // Player block captured synchronously RIGHT BEFORE the start-of-player-turn
-    // block reset (loseBlock) inside GameActionManager.getNextAction(). Set by
-    // PreBlockResetPatch; consumed by captureIntermediateState when emitting
-    // the "pre_player_turn" snapshot so the snapshot's player.block reflects
-    // the post-attack pre-reset value (instead of the post-reset 0/15).
-    // Sentinel -1 means "not set" — leave the captured live block alone.
-    private static int preBlockResetPlayerBlock = -1;
+    // Captures skipped since the last delivery, with the reason, so a turn
+    // that arrives with no intermediate snapshots says why (bug #48).
+    private static ArrayList<String> skippedCaptures = new ArrayList<String>();
+    // GameActionManager.turn at the last delivery of intermediate snapshots.
+    private static int lastDeliveredTurn = -1;
 
     /**
      * Used to indicate that something (in game logic, not external command) has been done that will change the game state,
@@ -98,37 +96,41 @@ public class GameStateListener {
      */
     public static void captureIntermediateState(String label, int monsterIndex, String monsterName) {
         if (!CommandExecutor.isInDungeon()) {
+            skippedCaptures.add(label + ": not in dungeon");
             return;
         }
         if (AbstractDungeon.getCurrRoom() == null || AbstractDungeon.getCurrRoom().phase != AbstractRoom.RoomPhase.COMBAT) {
+            skippedCaptures.add(label + ": room phase " + (AbstractDungeon.getCurrRoom() == null ? "null" : String.valueOf(AbstractDungeon.getCurrRoom().phase)));
             return;
         }
         HashMap<String, Object> snapshot = GameStateConverter.captureCompactCombatSnapshot(label, monsterIndex, monsterName);
         if (snapshot != null) {
-            // For the pre_player_turn snapshot, override the live (post-reset)
-            // block with the value PreBlockResetPatch captured just before the
-            // synchronous loseBlock call. Without this override the block
-            // delta from the last enemy's bullet conflates attack absorption
-            // with the housekeeping reset (e.g. Cultist hit for 12 with 15
-            // block would render "Block -15" instead of "Block -12").
-            if ("pre_player_turn".equals(label) && preBlockResetPlayerBlock >= 0) {
-                Object playerObj = snapshot.get("player");
-                if (playerObj instanceof HashMap) {
-                    ((HashMap)playerObj).put("block", preBlockResetPlayerBlock);
-                }
-            }
             intermediateStates.add(snapshot);
-        }
-        // Always consume the override after a pre_player_turn capture so a
-        // stale value can't bleed into a later turn (e.g. Barricade/Blur
-        // turns where loseBlock isn't called and the field stays unset).
-        if ("pre_player_turn".equals(label)) {
-            preBlockResetPlayerBlock = -1;
+        } else {
+            skippedCaptures.add(label + ": snapshot null");
         }
     }
 
-    public static void setPreBlockResetPlayerBlock(int block) {
-        preBlockResetPlayerBlock = block;
+    /**
+     * Note why a turn's intermediate snapshots are missing, for the state
+     * JSON (bug #48). Returns null when nothing is worth saying.
+     */
+    public static HashMap<String, Object> takeMissingIntermediatesNote(boolean delivered, int turn) {
+        HashMap<String, Object> note = null;
+        if (!delivered && turn != lastDeliveredTurn && turn > 1) {
+            note = new HashMap<String, Object>();
+            note.put("turn", turn);
+            note.put("last_delivered_turn", lastDeliveredTurn);
+            note.put("skipped", new ArrayList<String>(skippedCaptures));
+            CommunicationMod.logIntermediatesMissing(turn, lastDeliveredTurn, skippedCaptures);
+        }
+        if (delivered) {
+            lastDeliveredTurn = turn;
+        }
+        if (delivered || note != null) {
+            skippedCaptures.clear();
+        }
+        return note;
     }
 
     public static ArrayList<HashMap<String, Object>> getAndClearIntermediateStates() {
@@ -149,7 +151,8 @@ public class GameStateListener {
         waitingForCommand = false;
         waitOneUpdate = false;
         intermediateStates.clear();
-        preBlockResetPlayerBlock = -1;
+        skippedCaptures.clear();
+        lastDeliveredTurn = -1;
     }
 
     /**

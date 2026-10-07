@@ -610,6 +610,10 @@ public class GameStateConverter {
             if (!intermediates.isEmpty()) {
                 state.put("intermediate_states", intermediates);
             }
+            HashMap<String, Object> missing = GameStateListener.takeMissingIntermediatesNote(!intermediates.isEmpty(), GameActionManager.turn);
+            if (missing != null) {
+                state.put("intermediate_states_missing", missing);
+            }
         }
         return state;
     }
@@ -1011,7 +1015,20 @@ public class GameStateConverter {
     }
 
     private static String getPowerDescription(AbstractPower power) {
+        // Refresh first: many powers rebuild their text only when something
+        // calls updateDescription(), so an amount changed by a path that
+        // skips it (stackPower overrides, direct field writes) shipped with
+        // the old number in its text (bug #42).
+        try {
+            power.updateDescription();
+        }
+        catch (Exception exception) {
+            // Keep whatever text the power has.
+        }
         String input = power.description;
+        if (input == null) {
+            return "";
+        }
         input = input.replaceAll("#[rgbyp]", "");
         return input;
     }
@@ -1067,7 +1084,9 @@ public class GameStateConverter {
         }
         jsonPotion.put("can_use", canUse);
         jsonPotion.put("can_discard", canDiscard);
-        jsonPotion.put("requires_target", potion.isThrown);
+        // targetRequired, not isThrown: Explosive Potion is thrown but hits
+        // every enemy, and asking for a target refused it (bug #49).
+        jsonPotion.put("requires_target", potion.targetRequired);
         return jsonPotion;
     }
 
