@@ -363,6 +363,19 @@ public class CommandExecutor {
     }
 
     private static void executeCancelCommand() {
+        // A reward screen a relic opens in a shop (Cauldron, Orrery) is left
+        // with cancel. Whatever the player left on it stays in
+        // combatRewardScreen.rewards, and AbstractDungeon.closeCurrentScreen()
+        // sends any later GRID back to COMBAT_REWARD while that list is not
+        // empty: the shop's purge then reopened the leftover screen, which
+        // never came ready, and the run stalled for hours (bug #58). Leaving
+        // the screen forfeits what is on it, as the player chose.
+        if (AbstractDungeon.screen == AbstractDungeon.CurrentScreen.COMBAT_REWARD
+            && AbstractDungeon.getCurrRoom() instanceof com.megacrit.cardcrawl.rooms.ShopRoom
+            && AbstractDungeon.combatRewardScreen != null
+            && AbstractDungeon.combatRewardScreen.rewards != null) {
+            AbstractDungeon.combatRewardScreen.rewards.clear();
+        }
         ChoiceScreenUtils.pressCancelButton();
     }
 
