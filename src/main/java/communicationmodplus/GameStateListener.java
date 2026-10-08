@@ -231,6 +231,17 @@ public class GameStateListener {
                 return false;
             }
         }
+        // Out of combat, a card obtained through a ShowCardAnd*/FastCardObtain
+        // effect (an event's card, Cursed Key's curse, Neow's transform,
+        // Astrolabe, Dolly's Mirror) joins the deck only when the effect's
+        // animation ends. Published before that, the state shows the deck a
+        // card short and the harness reported the card one action late or
+        // never (bugs #63, #64, #98, #99, #124, #136). Hold every path until
+        // no such effect is pending. Ported from 12e4b50 (enh_create-video),
+        // which the 2026-10-04 merge b5ab7ea dropped.
+        if (!inCombat && hasPendingObtainEffect()) {
+            return false;
+        }
         // In event rooms, we need to wait for the event wait timer to reach 0 before we can accurately assess its state.
         AbstractRoom currentRoom = AbstractDungeon.getCurrRoom();
         if ((currentRoom instanceof EventRoom
@@ -263,6 +274,9 @@ public class GameStateListener {
                 return false;
             }
         } else if (waitOneUpdate) {
+            if (hasPendingObtainEffect()) {
+                return false;
+            }
             waitOneUpdate = false;
             return true;
         }
@@ -298,6 +312,33 @@ public class GameStateListener {
         if (timeout > 0) {
             timeout -= 1;
             if(timeout == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Any pending card-obtain effect on the four effect lists AbstractDungeon
+    // keeps: effectList, effectsQueue (promoted to effectList next tick),
+    // topLevelEffects (Neow's transform) and topLevelEffectsQueue. Matched by
+    // class-name prefix so no VFX class has to be imported.
+    private static boolean hasPendingObtainEffect() {
+        return listHasObtainEffect(AbstractDungeon.effectList)
+            || listHasObtainEffect(AbstractDungeon.effectsQueue)
+            || listHasObtainEffect(AbstractDungeon.topLevelEffects)
+            || listHasObtainEffect(AbstractDungeon.topLevelEffectsQueue);
+    }
+
+    private static boolean listHasObtainEffect(java.util.ArrayList<?> list) {
+        if (list == null) {
+            return false;
+        }
+        for (Object e : list) {
+            if (e == null) {
+                continue;
+            }
+            String name = e.getClass().getSimpleName();
+            if (name.startsWith("ShowCardAnd") || name.startsWith("FastCardObtain")) {
                 return true;
             }
         }
