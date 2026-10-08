@@ -7,9 +7,11 @@
  * end-of-round triggers, so no queued snapshot can sit between it and the
  * queued effects. This one is inserted before the start-of-turn
  * DrawCardAction is queued, which is after the reset in every branch: its
- * player Block is what the player kept, whatever kept it. The end-of-round
- * effects queued just before have not resolved yet; they land between this
- * snapshot and pre_player_turn.
+ * player Block is what the player kept, whatever kept it. The start of
+ * turn's in-place part (relic counters) runs before the reset, after
+ * player_turn_start (PlayerTurnStartPatch). The end-of-round effects queued
+ * just before have not resolved yet; they land between pre_round_end_queue
+ * and pre_player_turn.
  *
  * Replaces PreBlockResetPatch, which overwrote pre_player_turn's Block with
  * the pre-reset value and never fired under Barricade or Blur (bug #44).

@@ -7,10 +7,12 @@
  * Vulnerable/Weak decay, etc.) have resolved — so the snapshot
  * captures the clean post-enemy-phase state.
  *
- * The player's Block reset and energy refill happen synchronously in the
- * same getNextAction() call (before the queue drains), so the snapshot
- * includes those changes; post_block_reset (PostBlockResetPatch) holds
- * the Block the player kept, before the queued end-of-round effects.
+ * The player's start-of-turn relics and powers and the Block reset run
+ * synchronously in the same getNextAction() call (before the queue
+ * drains), so the snapshot includes those changes. player_turn_start,
+ * post_block_reset and pre_round_end_queue (PlayerTurnStartPatch,
+ * PostBlockResetPatch) split them from the round's end: the round's queued
+ * end is pre_round_end_queue → here.
  */
 package communicationmodplus;
 
