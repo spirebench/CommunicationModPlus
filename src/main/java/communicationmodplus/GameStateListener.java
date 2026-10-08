@@ -242,6 +242,36 @@ public class GameStateListener {
         if (!inCombat && hasPendingObtainEffect()) {
             return false;
         }
+        // In combat only the deck-obtain effect defers its change (Writhing
+        // Mass's Implant adds to the master deck when the effect ends); the
+        // hand/draw/discard ShowCardAnd* effects act synchronously and are
+        // not held, which would slow every card that creates one.
+        if (inCombat && hasPendingDeckObtainEffect()) {
+            return false;
+        }
+        // In-combat HAND_SELECT picker stability gate (49dac73, May; deferred
+        // by the 2026-10-04 merge b5ab7ea and not ported until now). A hand
+        // picker (Warcry, Headbutt, Gambling Chip, Discovery) must not be
+        // reported in its OUT phase -- just confirmed, its action not yet
+        // drained into the hand -- or the next play_card resolves against a
+        // hand that is about to change and lands on the wrong card or is
+        // silently dropped (LC0001 F44, Warcry+ put-on-deck).
+        if (inCombat) {
+            com.megacrit.cardcrawl.screens.select.HandCardSelectScreen handSel = AbstractDungeon.handCardSelectScreen;
+            if (previousScreen == AbstractDungeon.CurrentScreen.HAND_SELECT
+                && newScreen != AbstractDungeon.CurrentScreen.HAND_SELECT) {
+                if (!AbstractDungeon.actionManager.phase.equals((Object)GameActionManager.Phase.WAITING_ON_USER)
+                    || !AbstractDungeon.actionManager.actions.isEmpty()
+                    || !AbstractDungeon.actionManager.cardQueue.isEmpty()
+                    || !AbstractDungeon.actionManager.preTurnActions.isEmpty()) {
+                    return false;
+                }
+            }
+            if (newScreen == AbstractDungeon.CurrentScreen.HAND_SELECT
+                && handSel != null && handSel.wereCardsRetrieved) {
+                return false;
+            }
+        }
         // In event rooms, we need to wait for the event wait timer to reach 0 before we can accurately assess its state.
         AbstractRoom currentRoom = AbstractDungeon.getCurrRoom();
         if ((currentRoom instanceof EventRoom
@@ -329,6 +359,25 @@ public class GameStateListener {
             || listHasObtainEffect(AbstractDungeon.topLevelEffectsQueue);
     }
 
+    private static boolean hasPendingDeckObtainEffect() {
+        return listHasClass(AbstractDungeon.effectList, "ShowCardAndObtainEffect")
+            || listHasClass(AbstractDungeon.effectsQueue, "ShowCardAndObtainEffect")
+            || listHasClass(AbstractDungeon.topLevelEffects, "ShowCardAndObtainEffect")
+            || listHasClass(AbstractDungeon.topLevelEffectsQueue, "ShowCardAndObtainEffect");
+    }
+
+    private static boolean listHasClass(java.util.ArrayList<?> list, String simpleName) {
+        if (list == null) {
+            return false;
+        }
+        for (Object e : list) {
+            if (e != null && e.getClass().getSimpleName().equals(simpleName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean listHasObtainEffect(java.util.ArrayList<?> list) {
         if (list == null) {
             return false;
@@ -338,7 +387,11 @@ public class GameStateListener {
                 continue;
             }
             String name = e.getClass().getSimpleName();
-            if (name.startsWith("ShowCardAnd") || name.startsWith("FastCardObtain")) {
+            // Keys (ObtainKeyEffect, Sapphire/Emerald from a reward) and
+            // potions (ObtainPotionEffect, Entropic Brew out of combat) also
+            // land when their effect runs, after the claim is published.
+            if (name.startsWith("ShowCardAnd") || name.startsWith("FastCardObtain")
+                || name.equals("ObtainKeyEffect") || name.equals("ObtainPotionEffect")) {
                 return true;
             }
         }
