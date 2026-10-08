@@ -798,6 +798,15 @@ public class GameStateConverter {
         jsonCard.put("has_target", card.target== AbstractCard.CardTarget.SELF_AND_ENEMY || card.target == AbstractCard.CardTarget.ENEMY);
         jsonCard.put("exhausts", card.exhaust);
         jsonCard.put("ethereal", card.isEthereal);
+        // The relic holding this card, if a Bottled relic does: the deck
+        // summary names it so a bottle's contents (or emptiness) is known.
+        if (card.inBottleFlame) {
+            jsonCard.put("bottled", "Bottled Flame");
+        } else if (card.inBottleLightning) {
+            jsonCard.put("bottled", "Bottled Lightning");
+        } else if (card.inBottleTornado) {
+            jsonCard.put("bottled", "Bottled Tornado");
+        }
         jsonCard.put("description", getCardDescription(card));
         return jsonCard;
     }
