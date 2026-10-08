@@ -9,7 +9,10 @@ import com.megacrit.cardcrawl.characters.CharacterManager;
 import com.megacrit.cardcrawl.core.CardCrawlGame;
 import com.megacrit.cardcrawl.core.Settings;
 import com.megacrit.cardcrawl.dungeons.AbstractDungeon;
+import com.megacrit.cardcrawl.helpers.CardLibrary;
+import com.megacrit.cardcrawl.helpers.PotionHelper;
 import com.megacrit.cardcrawl.helpers.RelicLibrary;
+import com.megacrit.cardcrawl.vfx.cardManip.ShowCardAndObtainEffect;
 import com.megacrit.cardcrawl.helpers.SeedHelper;
 import com.megacrit.cardcrawl.helpers.TrialHelper;
 import com.megacrit.cardcrawl.saveAndContinue.SaveAndContinue;
@@ -39,10 +42,19 @@ public class CommandExecutor {
         if(tokens.length == 0) {
             return false;
         }
-        if (!isCommandAvailable(tokens[0])) {
+        if (CommandExecutor.isPotionGift(tokens) && !CommandExecutor.isInDungeon()) {
+            throw new InvalidCommandException("Invalid command: potion. Possible commands: " + CommandExecutor.getAvailableCommands());
+        }
+        if (!CommandExecutor.isPotionGift(tokens) && !isCommandAvailable(tokens[0])) {
             throw new InvalidCommandException("Invalid command: " + tokens[0] + ". Possible commands: " + getAvailableCommands());
         }
         String command_tail = command.substring(tokens[0].length());
+        if (CommandExecutor.isPotionGift(tokens)) {
+            // potion <id>: the hidden gift form, told apart from
+            // "potion use|discard <slot>" by its second word.
+            CommandExecutor.executePotionGiftCommand(tokens, command_tail.trim());
+            return true;
+        }
         switch(tokens[0]) {
             case "play":
                 executePlayCommand(tokens);
@@ -87,6 +99,9 @@ public class CommandExecutor {
             case "relic":
                 executeRelicCommand(tokens, command_tail.trim());
                 return true;
+            case "card":
+                executeCardGiftCommand(tokens, command_tail.trim());
+                return true;
 
             default:
                 logger.info("This should never happen.");
@@ -128,7 +143,7 @@ public class CommandExecutor {
     }
 
     public static boolean isCommandAvailable(String command) {
-        if (command.equals("relic")) {
+        if (command.equals("relic") || command.equals("card")) {
             // A test hook, not a move: deliberately left out of
             // available_commands so nothing that reads that list offers it.
             return isInDungeon();
@@ -571,6 +586,88 @@ public class CommandExecutor {
         // Report once the relic has settled, whether or not obtaining it
         // changed anything the state listener watches.
         GameStateListener.setTimeout(30);
+    }
+
+    /*
+     * The hidden gift form of the potion command, "potion <potion id>": any
+     * second word but use/discard. Available whenever a run is in progress,
+     * unlike "potion use|discard", which needs a potion in the belt.
+     */
+    private static boolean isPotionGift(String[] tokens) {
+        return tokens.length >= 2 && tokens[0].equals("potion") && !tokens[1].equals("use") && !tokens[1].equals("discard");
+    }
+
+    /*
+     * potion <potion id>: put a potion in the first empty belt slot, through
+     * the game's own AbstractPlayer.obtainPotion (so Sozu refuses it, as it
+     * does any potion). Refused with an error when the belt is full or the id
+     * is unknown. Used by the harness to test what particular potions do to
+     * it (AASTS_POTION_GIFTS). Matched ignoring case against PotionHelper's
+     * full list, since every command is lowercased on arrival.
+     */
+    private static void executePotionGiftCommand(String[] tokens, String potionName) throws InvalidCommandException {
+        String found = null;
+        for (String id : PotionHelper.getPotions(null, true)) {
+            if (!id.equalsIgnoreCase(potionName)) continue;
+            found = id;
+            break;
+        }
+        if (found == null) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, potionName);
+        }
+        if (!AbstractDungeon.player.obtainPotion(PotionHelper.getPotion(found))) {
+            throw new InvalidCommandException("Cannot obtain potion " + found + ": the potion belt is full, or a relic forbids potions.");
+        }
+        GameStateListener.setTimeout(30);
+    }
+
+    /*
+     * card <card id> [upgrades]: add a card to the master deck through the
+     * game's ordinary obtain path, ShowCardAndObtainEffect, so obtain hooks
+     * fire (Ceramic Fish's gold, the Eggs' upgrade, Omamori against a curse)
+     * and the state listener's out-of-combat obtain gate holds the published
+     * state until the card has joined the deck. A trailing integer upgrades
+     * the card that many times (Searing Blow takes any number; other cards
+     * stop at one). The id is matched ignoring case against CardLibrary.
+     * Used by the harness to test what particular cards do to it
+     * (AASTS_CARD_GIFTS).
+     */
+    private static void executeCardGiftCommand(String[] tokens, String cardName) throws InvalidCommandException {
+        if (cardName.isEmpty()) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.MISSING_ARGUMENT);
+        }
+        int upgrades = 0;
+        String id = CommandExecutor.findCardId(cardName);
+        if (id == null) {
+            int split = cardName.lastIndexOf(' ');
+            if (split > 0) {
+                try {
+                    upgrades = Integer.parseInt(cardName.substring(split + 1));
+                    id = CommandExecutor.findCardId(cardName.substring(0, split).trim());
+                }
+                catch (NumberFormatException e) {
+                    id = null;
+                }
+            }
+        }
+        if (id == null || upgrades < 0) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, cardName);
+        }
+        AbstractCard card = CardLibrary.getCard(id).makeCopy();
+        for (int i = 0; i < upgrades && card.canUpgrade(); ++i) {
+            card.upgrade();
+        }
+        AbstractDungeon.effectList.add(new ShowCardAndObtainEffect(card, (float)Settings.WIDTH / 2.0f, (float)Settings.HEIGHT / 2.0f));
+        GameStateListener.setTimeout(30);
+    }
+
+    private static String findCardId(String cardName) {
+        for (String id : CardLibrary.cards.keySet()) {
+            if (id.equalsIgnoreCase(cardName)) {
+                return id;
+            }
+        }
+        return null;
     }
 
     private static int getKeycode(String keyName) {
