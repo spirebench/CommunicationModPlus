@@ -671,6 +671,14 @@ public class ChoiceScreenUtils {
     }
 
     private static void clickProceedButton() {
+        // ProceedButton nags once per dungeon when a reward screen is left
+        // with exactly three relics untaken (Calling Bell's): it opens an
+        // FtueTip instead of proceeding. The tip ignores TipTracker, so
+        // disableAllFtues() does not stop it, and its FTUE screen offers no
+        // command -- the game sat on it for an hour (FZ3BSU2X2Z8W7, Calling
+        // Bell gifted at Neow, every relic skipped). A proceed command is
+        // the agent's decision, not a misclick: spend the nag first.
+        ReflectionHacks.setPrivate((Object)AbstractDungeon.overlayMenu.proceedButton, ProceedButton.class, (String)"callingBellCheck", (Object)false);
         AbstractDungeon.overlayMenu.proceedButton.show();
         Hitbox hb = (Hitbox) ReflectionHacks.getPrivate(AbstractDungeon.overlayMenu.proceedButton, ProceedButton.class, "hb");
         hb.clicked = true;

@@ -217,11 +217,38 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
     }
 
     public void receivePostDungeonUpdate() {
+        CommunicationMod.dismissFtueTip();
         if (GameStateListener.checkForDungeonStateChange()) {
             mustSendGameState = true;
         }
         if(AbstractDungeon.getCurrRoom().isBattleOver) {
             GameStateListener.signalTurnEnd();
+        }
+    }
+
+    // A first-time-user tip that gets past TipTracker.disableAllFtues() (the
+    // Calling Bell nag in ProceedButton is one) puts the game on the FTUE
+    // screen, which offers no command: the agent can only poll it. Press its
+    // "Got it" button for the agent, as a player would, once per tip.
+    private static Object dismissedFtue = null;
+
+    private static void dismissFtueTip() {
+        if (AbstractDungeon.screen != AbstractDungeon.CurrentScreen.FTUE || AbstractDungeon.ftue == null) {
+            return;
+        }
+        if (AbstractDungeon.ftue == dismissedFtue) {
+            return;
+        }
+        try {
+            com.megacrit.cardcrawl.ui.buttons.GotItButton button = (com.megacrit.cardcrawl.ui.buttons.GotItButton)basemod.ReflectionHacks.getPrivate((Object)AbstractDungeon.ftue, com.megacrit.cardcrawl.ui.FtueTip.class, (String)"button");
+            if (button != null) {
+                button.hb.clicked = true;
+                dismissedFtue = AbstractDungeon.ftue;
+                logger.info("Dismissed a first-time-user tip (" + AbstractDungeon.ftue.type + ") the agent could not answer.");
+            }
+        }
+        catch (RuntimeException e) {
+            logger.error("Could not dismiss a first-time-user tip: " + e);
         }
     }
 
