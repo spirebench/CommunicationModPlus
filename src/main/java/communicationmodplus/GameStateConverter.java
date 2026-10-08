@@ -600,17 +600,20 @@ public class GameStateConverter {
         state.put("turn", GameActionManager.turn);
         state.put("cards_discarded_this_turn", GameActionManager.totalDiscardedThisTurn);
         state.put("times_damaged", AbstractDungeon.player.damagedThisCombat);
-        // Only deliver (and clear) intermediate snapshots when the game is
-        // ready for the agent's next command. During animations the game
-        // sends many state updates; delivering intermediates on those would
-        // flush the buffer before all per-monster snapshots have been
-        // captured, breaking per-enemy attribution on the Python side.
+        // Only deliver intermediate snapshots when the game is ready for
+        // the agent's next command. During animations the game sends many
+        // state updates; settling on those would hand the batch out before
+        // all per-monster snapshots have been captured, breaking per-enemy
+        // attribution on the Python side. A delivered batch (or the note
+        // saying it is missing) rides on every ready state until the next
+        // acting command (bug #72).
         if (GameStateListener.isWaitingForCommand()) {
-            ArrayList<HashMap<String, Object>> intermediates = GameStateListener.getAndClearIntermediateStates();
+            GameStateListener.settleIntermediates(GameActionManager.turn);
+            ArrayList<HashMap<String, Object>> intermediates = GameStateListener.getDeliveredIntermediates();
             if (!intermediates.isEmpty()) {
                 state.put("intermediate_states", intermediates);
             }
-            HashMap<String, Object> missing = GameStateListener.takeMissingIntermediatesNote(!intermediates.isEmpty(), GameActionManager.turn);
+            HashMap<String, Object> missing = GameStateListener.getMissingIntermediatesNote();
             if (missing != null) {
                 state.put("intermediate_states_missing", missing);
             }
@@ -621,9 +624,9 @@ public class GameStateConverter {
     /**
      * Capture a compact combat snapshot for the intermediate-state buffer.
      * Contains only the fields needed to diff combat events between snapshots:
-     * player HP/block/powers/orbs and per-monster HP/block/powers/is_gone.
-     * No piles, potions, relics, deck, energy, or stance — those are already
-     * captured in the regular {@code getCombatState()} call.
+     * player HP/block/gold/powers/orbs/stance, relic counters, compact
+     * piles, and per-monster HP/block/powers/is_gone. No potions, deck or
+     * energy — those are only in the regular {@code getCombatState()} call.
      */
     public static HashMap<String, Object> captureCompactCombatSnapshot(String label, int monsterIndex, String monsterName) {
         if (AbstractDungeon.getCurrRoom() == null || AbstractDungeon.getCurrRoom().monsters == null) {
@@ -654,6 +657,16 @@ public class GameStateConverter {
             player.put("stance", AbstractDungeon.player.stance.ID);
         }
         snapshot.put("player", player);
+        // Relic counters, so a relic that fires during the enemy turn (Lizard
+        // Tail, spent at -2) is reported in the segment it fired in rather
+        // than at the start of the next turn (bug #73).
+        java.util.LinkedHashMap<String, Object> relicCounters = new java.util.LinkedHashMap<String, Object>();
+        if (AbstractDungeon.player.relics != null) {
+            for (AbstractRelic relic : AbstractDungeon.player.relics) {
+                relicCounters.put(relic.name, relic.counter);
+            }
+        }
+        snapshot.put("relic_counters", relicCounters);
         ArrayList<HashMap<String, Object>> monsterList = new ArrayList<HashMap<String, Object>>();
         for (Object monsterObj : AbstractDungeon.getCurrRoom().monsters.monsters) {
             AbstractMonster monster = (AbstractMonster)monsterObj;

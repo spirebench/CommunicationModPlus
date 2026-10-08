@@ -24,12 +24,25 @@ public class GameStateListener {
     private static boolean hasPresentedOutOfGameState = false;
     private static boolean waitOneUpdate = false;
     private static int timeout = 0;
+    // Snapshots captured since the last ready state.
     private static ArrayList<HashMap<String, Object>> intermediateStates = new ArrayList<HashMap<String, Object>>();
+    // The batch handed out with the last ready state, sent again with every
+    // ready state until the next command that acts on the game (bug #72).
+    // The harness reads only the newest output file, so a ready state the
+    // mod republished straight away (answering a `state` poll that crossed
+    // the turn start) used to replace the one that carried the batch, and
+    // that turn arrived with no snapshots and no note.
+    private static ArrayList<HashMap<String, Object>> deliveredStates = new ArrayList<HashMap<String, Object>>();
     // Captures skipped since the last delivery, with the reason, so a turn
     // that arrives with no intermediate snapshots says why (bug #48).
     private static ArrayList<String> skippedCaptures = new ArrayList<String>();
+    // The note for a turn that arrived without snapshots; like the batch,
+    // repeated on every ready state until the next acting command.
+    private static HashMap<String, Object> missingNote = null;
     // GameActionManager.turn at the last delivery of intermediate snapshots.
     private static int lastDeliveredTurn = -1;
+    // The last turn accounted for: delivered, or noted as missing.
+    private static int lastAccountedTurn = -1;
 
     /**
      * Used to indicate that something (in game logic, not external command) has been done that will change the game state,
@@ -53,6 +66,9 @@ public class GameStateListener {
      */
     public static void registerCommandExecution() {
         waitingForCommand = false;
+        // The agent has acted on a state that carried them.
+        deliveredStates.clear();
+        missingNote = null;
     }
 
     /**
@@ -112,31 +128,56 @@ public class GameStateListener {
     }
 
     /**
-     * Note why a turn's intermediate snapshots are missing, for the state
-     * JSON (bug #48). Returns null when nothing is worth saying.
+     * Settle what a ready state carries about the enemy phase before it.
+     *
+     * New snapshots join the batch being delivered. A turn past the first
+     * that has none, and has not been accounted for, gets a note saying
+     * why (bug #48). Both are repeated on every ready state until the next
+     * acting command, so a republished state carries them too (bug #72).
      */
-    public static HashMap<String, Object> takeMissingIntermediatesNote(boolean delivered, int turn) {
-        HashMap<String, Object> note = null;
-        if (!delivered && turn != lastDeliveredTurn && turn > 1) {
-            note = new HashMap<String, Object>();
-            note.put("turn", turn);
-            note.put("last_delivered_turn", lastDeliveredTurn);
-            note.put("skipped", new ArrayList<String>(skippedCaptures));
-            CommunicationMod.logIntermediatesMissing(turn, lastDeliveredTurn, skippedCaptures);
-        }
-        if (delivered) {
-            lastDeliveredTurn = turn;
-        }
-        if (delivered || note != null) {
+    public static void settleIntermediates(int turn) {
+        if (turn <= 1) {
+            // The first turn of a combat: nothing captured before it belongs
+            // to it, and an earlier combat's turn numbers say nothing here.
+            intermediateStates.clear();
+            deliveredStates.clear();
             skippedCaptures.clear();
+            missingNote = null;
+            lastDeliveredTurn = -1;
+            lastAccountedTurn = turn;
+            return;
         }
-        return note;
+        if (turn < lastAccountedTurn) {
+            // A new combat whose first turn was never published ready.
+            deliveredStates.clear();
+            missingNote = null;
+            lastDeliveredTurn = -1;
+            lastAccountedTurn = -1;
+        }
+        if (!intermediateStates.isEmpty()) {
+            deliveredStates.addAll(intermediateStates);
+            intermediateStates.clear();
+            skippedCaptures.clear();
+            missingNote = null;
+            lastDeliveredTurn = turn;
+            lastAccountedTurn = turn;
+        } else if (deliveredStates.isEmpty() && missingNote == null && turn != lastAccountedTurn) {
+            missingNote = new HashMap<String, Object>();
+            missingNote.put("turn", turn);
+            missingNote.put("last_delivered_turn", lastDeliveredTurn);
+            missingNote.put("skipped", new ArrayList<String>(skippedCaptures));
+            CommunicationMod.logIntermediatesMissing(turn, lastDeliveredTurn, skippedCaptures);
+            skippedCaptures.clear();
+            lastAccountedTurn = turn;
+        }
     }
 
-    public static ArrayList<HashMap<String, Object>> getAndClearIntermediateStates() {
-        ArrayList<HashMap<String, Object>> out = intermediateStates;
-        intermediateStates = new ArrayList<HashMap<String, Object>>();
-        return out;
+    public static ArrayList<HashMap<String, Object>> getDeliveredIntermediates() {
+        return new ArrayList<HashMap<String, Object>>(deliveredStates);
+    }
+
+    public static HashMap<String, Object> getMissingIntermediatesNote() {
+        return missingNote;
     }
 
     public static void resetStateVariables() {
@@ -151,8 +192,11 @@ public class GameStateListener {
         waitingForCommand = false;
         waitOneUpdate = false;
         intermediateStates.clear();
+        deliveredStates.clear();
         skippedCaptures.clear();
+        missingNote = null;
         lastDeliveredTurn = -1;
+        lastAccountedTurn = -1;
     }
 
     /**
