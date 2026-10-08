@@ -249,6 +249,16 @@ public class GameStateListener {
         if (inCombat && hasPendingDeckObtainEffect()) {
             return false;
         }
+        // A Smoke Bomb escape keeps the room in COMBAT, the hand dealt and
+        // the enemies alive until the player's escape animation ends and the
+        // room completes. Published before that, the state reads as a fresh
+        // turn the player cannot take: a play was refused with "Possible
+        // commands: [potion, proceed, ...]" and the next state was an empty
+        // COMBAT_REWARD (#159, GFT3N9GD9RR9D F24, GFT48BEKAKF9M F14). Hold
+        // until the escape has finished.
+        if (inCombat && (AbstractDungeon.player.isEscaping || AbstractDungeon.getCurrRoom().smoked)) {
+            return false;
+        }
         // In-combat HAND_SELECT picker stability gate (49dac73, May; deferred
         // by the 2026-10-04 merge b5ab7ea and not ported until now). A hand
         // picker (Warcry, Headbutt, Gambling Chip, Discovery) must not be
