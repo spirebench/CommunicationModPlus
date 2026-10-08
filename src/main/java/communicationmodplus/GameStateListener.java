@@ -258,8 +258,14 @@ public class GameStateListener {
         // silently dropped (LC0001 F44, Warcry+ put-on-deck).
         if (inCombat) {
             com.megacrit.cardcrawl.screens.select.HandCardSelectScreen handSel = AbstractDungeon.handCardSelectScreen;
+            // Only when the picker closed back onto the combat itself: if
+            // it closed into another screen awaiting a pick (a potion's or
+            // card's card choice, a grid), the pending actions cannot drain
+            // until that pick is made, so holding here never lets go
+            // (FZ3SVFXGJE4PA: a CARD_REWARD held not-ready for 600 s).
             if (previousScreen == AbstractDungeon.CurrentScreen.HAND_SELECT
-                && newScreen != AbstractDungeon.CurrentScreen.HAND_SELECT) {
+                && newScreen != AbstractDungeon.CurrentScreen.HAND_SELECT
+                && !newScreenUp) {
                 if (!AbstractDungeon.actionManager.phase.equals((Object)GameActionManager.Phase.WAITING_ON_USER)
                     || !AbstractDungeon.actionManager.actions.isEmpty()
                     || !AbstractDungeon.actionManager.cardQueue.isEmpty()

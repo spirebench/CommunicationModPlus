@@ -341,6 +341,14 @@ public class CommandExecutor {
         if(use && !selectedPotion.canUse()) {
             throw new InvalidCommandException("Selected potion cannot be used.");
         }
+        // In combat, a screen that is up is a pick an action is waiting on
+        // (a hand picker, a grid, a card choice). A potion used over it
+        // queues its actions behind that one -- a Colorless Potion drunk
+        // over Well-Laid Plans' retain picker opened its card choice behind
+        // the picker and the state never came ready (FZ3SVFXGJE4PA).
+        if (use && AbstractDungeon.getCurrRoom().phase == AbstractRoom.RoomPhase.COMBAT && AbstractDungeon.isScreenUp) {
+            throw new InvalidCommandException("Potions cannot be used while a selection screen is open in combat.");
+        }
         if(!use && !selectedPotion.canDiscard()) {
             throw new InvalidCommandException("Selected potion cannot be discarded.");
         }
