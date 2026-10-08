@@ -672,6 +672,7 @@ public class GameStateConverter {
             AbstractMonster monster = (AbstractMonster)monsterObj;
             HashMap<String, Object> mstate = new HashMap<String, Object>();
             mstate.put("name", monster.name);
+            mstate.put("uid", GameStateConverter.monsterUid(monster));
             mstate.put("current_hp", monster.currentHealth);
             mstate.put("max_hp", monster.maxHealth);
             mstate.put("block", monster.currentBlock);
@@ -855,6 +856,22 @@ public class GameStateConverter {
         throw new IllegalArgumentException("Invalid key: " + key);
     }
 
+    // A stable identity per monster object for the life of the JVM. Two
+    // monsters with the same name and max HP (Reptomancer's Daggers) are
+    // otherwise indistinguishable once a spawn shifts their slots, and the
+    // harness paired the wrong ones (GFT3DR7U1QNEF F41).
+    private static final java.util.WeakHashMap<AbstractMonster, Integer> MONSTER_UIDS = new java.util.WeakHashMap<AbstractMonster, Integer>();
+    private static int nextMonsterUid = 1;
+
+    static synchronized int monsterUid(AbstractMonster monster) {
+        Integer uid = MONSTER_UIDS.get(monster);
+        if (uid == null) {
+            uid = nextMonsterUid++;
+            MONSTER_UIDS.put(monster, uid);
+        }
+        return uid;
+    }
+
     /**
      * Creates a GSON-compatible representation of the given monster
      * The monster object contains:
@@ -880,6 +897,7 @@ public class GameStateConverter {
     private static HashMap<String, Object> convertMonsterToJson(AbstractMonster monster) {
         HashMap<String, Object> jsonMonster = new HashMap<>();
         jsonMonster.put("id", monster.id);
+        jsonMonster.put("uid", GameStateConverter.monsterUid(monster));
         jsonMonster.put("name", monster.name);
         jsonMonster.put("current_hp", monster.currentHealth);
         jsonMonster.put("max_hp", monster.maxHealth);
