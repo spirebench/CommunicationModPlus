@@ -33,6 +33,9 @@ import communicationmodplus.patches.InputActionPatch;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.megacrit.cardcrawl.rooms.ShopRoom;
+import com.megacrit.cardcrawl.rooms.RestRoom;
+import com.megacrit.cardcrawl.rooms.MonsterRoom;
 import java.util.ArrayList;
 
 public class CommandExecutor {
@@ -670,11 +673,21 @@ public class CommandExecutor {
         if (floor < 0 || row < 0 || row >= AbstractDungeon.map.size() || AbstractDungeon.screen != AbstractDungeon.CurrentScreen.MAP) {
             throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens.length > 1 ? tokens[1] : "");
         }
+        // Only rooms that are whole before they are entered: an event room
+        // has no event and a treasure room no chest until the player walks
+        // in, and the game reads both while the room is current (an
+        // EventRoom's null event crashed the state listener, fuzz18).
         ArrayList<MapRoomNode> candidates = new ArrayList<MapRoomNode>();
+        ArrayList<MapRoomNode> fallback = new ArrayList<MapRoomNode>();
         for (MapRoomNode node : AbstractDungeon.map.get(row)) {
-            if (node.room != null && node.hasEdges()) {
+            if (node.room == null || !node.hasEdges()) continue;
+            fallback.add(node);
+            if (node.room instanceof MonsterRoom || node.room instanceof RestRoom || node.room instanceof ShopRoom) {
                 candidates.add(node);
             }
+        }
+        if (candidates.isEmpty()) {
+            candidates = fallback;
         }
         if (candidates.isEmpty()) {
             throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens[1]);

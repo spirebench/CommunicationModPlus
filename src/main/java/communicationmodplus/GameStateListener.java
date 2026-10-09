@@ -350,6 +350,7 @@ public class GameStateListener {
         if ((currentRoom instanceof EventRoom
                 || currentRoom instanceof NeowRoom
                 || (currentRoom instanceof VictoryRoom && ((VictoryRoom) currentRoom).eType == VictoryRoom.EventType.HEART))
+                && AbstractDungeon.getCurrRoom().event != null
                 && AbstractDungeon.getCurrRoom().event.waitTimer != 0.0F) {
             return false;
         }
