@@ -1,12 +1,16 @@
 package communicationmodplus;
 
+import basemod.ReflectionHacks;
 import com.megacrit.cardcrawl.actions.GameActionManager;
+import com.megacrit.cardcrawl.cards.AbstractCard;
 import com.megacrit.cardcrawl.core.CardCrawlGame;
 import com.megacrit.cardcrawl.dungeons.AbstractDungeon;
 import com.megacrit.cardcrawl.neow.NeowRoom;
 import com.megacrit.cardcrawl.rooms.AbstractRoom;
 import com.megacrit.cardcrawl.rooms.EventRoom;
 import com.megacrit.cardcrawl.rooms.VictoryRoom;
+import com.megacrit.cardcrawl.vfx.FastCardObtainEffect;
+import com.megacrit.cardcrawl.vfx.cardManip.ShowCardAndObtainEffect;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -39,6 +43,10 @@ public class GameStateListener {
     // The note for a turn that arrived without snapshots; like the batch,
     // repeated on every ready state until the next acting command.
     private static HashMap<String, Object> missingNote = null;
+    // Card obtains started since the last snapshot, by card uuid
+    // (CardObtainEffectPatch): reported by the next snapshot even if the card
+    // has landed by then, so the obtain is placed in the segment it began in.
+    private static java.util.LinkedHashMap<String, HashMap<String, Object>> startedObtains = new java.util.LinkedHashMap<String, HashMap<String, Object>>();
     // GameActionManager.turn at the last delivery of intermediate snapshots.
     private static int lastDeliveredTurn = -1;
     // The last turn accounted for: delivered, or noted as missing.
@@ -127,6 +135,51 @@ public class GameStateListener {
         }
     }
 
+    public static void noteCardObtainStarted(AbstractCard card, String destination) {
+        if (card == null || AbstractDungeon.getCurrRoom() == null || AbstractDungeon.getCurrRoom().phase != AbstractRoom.RoomPhase.COMBAT) {
+            return;
+        }
+        startedObtains.put(card.uuid.toString(), cardInFlight(card, destination));
+    }
+
+    private static HashMap<String, Object> cardInFlight(AbstractCard card, String destination) {
+        HashMap<String, Object> entry = new HashMap<String, Object>();
+        entry.put("name", card.name);
+        entry.put("uuid", card.uuid.toString());
+        entry.put("destination", destination);
+        return entry;
+    }
+
+    /**
+     * The cards on their way to a pile for a snapshot: every obtain started
+     * since the previous snapshot, landed or not, and every obtain still
+     * running. Each is {name, uuid, destination}; the destination is "deck",
+     * the one move the game defers (see CardObtainEffectPatch). A card still
+     * in flight is listed by every snapshot until it lands, so a reader takes
+     * the first snapshot that lists a uuid as the one it was obtained in.
+     */
+    public static ArrayList<HashMap<String, Object>> takeCardsInFlight() {
+        java.util.LinkedHashMap<String, HashMap<String, Object>> out = new java.util.LinkedHashMap<String, HashMap<String, Object>>(startedObtains);
+        startedObtains.clear();
+        for (java.util.ArrayList<?> list : new java.util.ArrayList<?>[]{AbstractDungeon.effectList, AbstractDungeon.effectsQueue, AbstractDungeon.topLevelEffects, AbstractDungeon.topLevelEffectsQueue}) {
+            if (list == null) {
+                continue;
+            }
+            for (Object e : list) {
+                AbstractCard card = null;
+                if (e instanceof ShowCardAndObtainEffect && !((ShowCardAndObtainEffect)e).isDone) {
+                    card = (AbstractCard)ReflectionHacks.getPrivate(e, ShowCardAndObtainEffect.class, "card");
+                } else if (e instanceof FastCardObtainEffect && !((FastCardObtainEffect)e).isDone) {
+                    card = (AbstractCard)ReflectionHacks.getPrivate(e, FastCardObtainEffect.class, "card");
+                }
+                if (card != null && !out.containsKey(card.uuid.toString())) {
+                    out.put(card.uuid.toString(), cardInFlight(card, "deck"));
+                }
+            }
+        }
+        return new ArrayList<HashMap<String, Object>>(out.values());
+    }
+
     /**
      * Settle what a ready state carries about the enemy phase before it.
      *
@@ -136,6 +189,9 @@ public class GameStateListener {
      * acting command, so a republished state carries them too (bug #72).
      */
     public static void settleIntermediates(int turn) {
+        // A ready state carries the deck itself; an obtain started before it
+        // is not the next enemy phase's.
+        startedObtains.clear();
         if (turn <= 1) {
             // The first turn of a combat: nothing captured before it belongs
             // to it, and an earlier combat's turn numbers say nothing here.
@@ -197,6 +253,7 @@ public class GameStateListener {
         missingNote = null;
         lastDeliveredTurn = -1;
         lastAccountedTurn = -1;
+        startedObtains.clear();
     }
 
     /**
@@ -379,7 +436,9 @@ public class GameStateListener {
         return listHasClass(AbstractDungeon.effectList, "ShowCardAndObtainEffect")
             || listHasClass(AbstractDungeon.effectsQueue, "ShowCardAndObtainEffect")
             || listHasClass(AbstractDungeon.topLevelEffects, "ShowCardAndObtainEffect")
-            || listHasClass(AbstractDungeon.topLevelEffectsQueue, "ShowCardAndObtainEffect");
+            || listHasClass(AbstractDungeon.topLevelEffectsQueue, "ShowCardAndObtainEffect")
+            || listHasClass(AbstractDungeon.effectList, "FastCardObtainEffect")
+            || listHasClass(AbstractDungeon.effectsQueue, "FastCardObtainEffect");
     }
 
     private static boolean listHasClass(java.util.ArrayList<?> list, String simpleName) {

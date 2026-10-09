@@ -625,8 +625,9 @@ public class GameStateConverter {
      * Capture a compact combat snapshot for the intermediate-state buffer.
      * Contains only the fields needed to diff combat events between snapshots:
      * player HP/block/gold/powers/orbs/stance, relic counters, compact
-     * piles, and per-monster HP/block/powers/is_gone. No potions, deck or
-     * energy — those are only in the regular {@code getCombatState()} call.
+     * piles, per-monster HP/block/powers/is_gone, and the cards in flight
+     * to the deck. No potions, deck or energy — those are only in the
+     * regular {@code getCombatState()} call.
      */
     public static HashMap<String, Object> captureCompactCombatSnapshot(String label, int monsterIndex, String monsterName) {
         if (AbstractDungeon.getCurrRoom() == null || AbstractDungeon.getCurrRoom().monsters == null) {
@@ -693,6 +694,14 @@ public class GameStateConverter {
         snapshot.put("hand", GameStateConverter.compactPileSnapshot(AbstractDungeon.player.hand));
         snapshot.put("draw_pile", GameStateConverter.compactPileSnapshot(AbstractDungeon.player.drawPile));
         snapshot.put("exhaust_pile", GameStateConverter.compactPileSnapshot(AbstractDungeon.player.exhaustPile));
+        // Cards obtained since the previous snapshot or still on their way
+        // (bug #207): the deck is not captured, and a card obtained into it
+        // lands only when its effect ends, so without this the harness could
+        // place it only at the start of the next turn.
+        ArrayList<HashMap<String, Object>> inFlight = GameStateListener.takeCardsInFlight();
+        if (!inFlight.isEmpty()) {
+            snapshot.put("cards_in_flight", inFlight);
+        }
         return snapshot;
     }
 
