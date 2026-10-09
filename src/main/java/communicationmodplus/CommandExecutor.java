@@ -8,6 +8,7 @@ import com.megacrit.cardcrawl.characters.AbstractPlayer;
 import com.megacrit.cardcrawl.characters.CharacterManager;
 import com.megacrit.cardcrawl.core.CardCrawlGame;
 import com.megacrit.cardcrawl.core.Settings;
+import com.megacrit.cardcrawl.map.MapRoomNode;
 import com.megacrit.cardcrawl.screens.DungeonTransitionScreen;
 import com.megacrit.cardcrawl.vfx.ObtainKeyEffect;
 import com.megacrit.cardcrawl.dungeons.AbstractDungeon;
@@ -107,6 +108,9 @@ public class CommandExecutor {
             case "act":
                 executeActJumpCommand(tokens);
                 return true;
+            case "floor":
+                executeFloorJumpCommand(tokens);
+                return true;
             case "relic":
                 executeRelicCommand(tokens, command_tail.trim());
                 return true;
@@ -154,7 +158,7 @@ public class CommandExecutor {
     }
 
     public static boolean isCommandAvailable(String command) {
-        if (command.equals("relic") || command.equals("card") || command.equals("maxhp") || command.equals("keys") || command.equals("act")) {
+        if (command.equals("relic") || command.equals("card") || command.equals("maxhp") || command.equals("keys") || command.equals("act") || command.equals("floor")) {
             // A test hook, not a move: deliberately left out of
             // available_commands so nothing that reads that list offers it.
             return isInDungeon();
@@ -639,6 +643,52 @@ public class CommandExecutor {
         CardCrawlGame.dungeonTransitionScreen = new DungeonTransitionScreen(dungeons[act]);
         AbstractDungeon.actNum = act - 1;
         AbstractDungeon.getCurrRoom().phase = AbstractRoom.RoomPhase.COMPLETE;
+        GameStateListener.setTimeout(30);
+    }
+
+    /*
+     * floor <n>: on this act's map at its start, make floor n the next room.
+     * The player is put on a node of the row before it, picked by a Random
+     * seeded from the run seed and n (never one of the game's own RNGs, so
+     * the run's draws are untouched), and that node's room is marked
+     * complete, as a room left behind is; the floor counter is set to n - 1.
+     * The node goes on the path, so a resume rebuilds the position, and
+     * firstRoomChosen is set, so the next pick follows the node's edges. For
+     * a boss floor the node is on the last row, from which the boss is the
+     * next choice (AASTS_START_FLOOR, after "act" when n is in a later act).
+     */
+    private static void executeFloorJumpCommand(String[] tokens) throws InvalidCommandException {
+        int floor;
+        try {
+            floor = Integer.parseInt(tokens.length > 1 ? tokens[1] : "");
+        }
+        catch (NumberFormatException e) {
+            floor = -1;
+        }
+        int offset = (AbstractDungeon.actNum - 1) * 17;
+        int row = floor - offset - 2;
+        if (floor < 0 || row < 0 || row >= AbstractDungeon.map.size() || AbstractDungeon.screen != AbstractDungeon.CurrentScreen.MAP) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens.length > 1 ? tokens[1] : "");
+        }
+        ArrayList<MapRoomNode> candidates = new ArrayList<MapRoomNode>();
+        for (MapRoomNode node : AbstractDungeon.map.get(row)) {
+            if (node.room != null && node.hasEdges()) {
+                candidates.add(node);
+            }
+        }
+        if (candidates.isEmpty()) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens[1]);
+        }
+        java.util.Random pick = new java.util.Random(Settings.seed * 31L + floor);
+        MapRoomNode node = candidates.get(pick.nextInt(candidates.size()));
+        AbstractDungeon.setCurrMapNode(node);
+        node.taken = true;
+        node.room.phase = AbstractRoom.RoomPhase.COMPLETE;
+        AbstractDungeon.firstRoomChosen = true;
+        AbstractDungeon.pathX.add(node.x);
+        AbstractDungeon.pathY.add(node.y);
+        AbstractDungeon.floorNum = floor - 1;
+        AbstractDungeon.dungeonMapScreen.open(false);
         GameStateListener.setTimeout(30);
     }
 
