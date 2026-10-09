@@ -8,6 +8,8 @@ import com.megacrit.cardcrawl.characters.AbstractPlayer;
 import com.megacrit.cardcrawl.characters.CharacterManager;
 import com.megacrit.cardcrawl.core.CardCrawlGame;
 import com.megacrit.cardcrawl.core.Settings;
+import com.megacrit.cardcrawl.screens.DungeonTransitionScreen;
+import com.megacrit.cardcrawl.vfx.ObtainKeyEffect;
 import com.megacrit.cardcrawl.dungeons.AbstractDungeon;
 import com.megacrit.cardcrawl.helpers.CardLibrary;
 import com.megacrit.cardcrawl.helpers.PotionHelper;
@@ -96,6 +98,15 @@ public class CommandExecutor {
             case "wait":
                 executeWaitCommand(tokens);
                 return true;
+            case "maxhp":
+                executeMaxHpGiftCommand(tokens);
+                return true;
+            case "keys":
+                executeKeyGiftCommand(tokens);
+                return true;
+            case "act":
+                executeActJumpCommand(tokens);
+                return true;
             case "relic":
                 executeRelicCommand(tokens, command_tail.trim());
                 return true;
@@ -143,7 +154,7 @@ public class CommandExecutor {
     }
 
     public static boolean isCommandAvailable(String command) {
-        if (command.equals("relic") || command.equals("card")) {
+        if (command.equals("relic") || command.equals("card") || command.equals("maxhp") || command.equals("keys") || command.equals("act")) {
             // A test hook, not a move: deliberately left out of
             // available_commands so nothing that reads that list offers it.
             return isInDungeon();
@@ -548,6 +559,87 @@ public class CommandExecutor {
             throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.OUT_OF_BOUNDS, tokens[1]);
         }
         GameStateListener.setTimeout(timeout);
+    }
+
+    /*
+     * maxhp <n>: raise max HP by n, healing the same amount (the game's own
+     * increaseMaxHp, as BaseMod's "maxhp add"). For fuzz games that are to
+     * live into the late acts (AASTS_MAXHP_GIFT).
+     */
+    private static void executeMaxHpGiftCommand(String[] tokens) throws InvalidCommandException {
+        int amount;
+        try {
+            amount = Integer.parseInt(tokens.length > 1 ? tokens[1] : "");
+        }
+        catch (NumberFormatException e) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens.length > 1 ? tokens[1] : "");
+        }
+        if (amount <= 0) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens[1]);
+        }
+        AbstractDungeon.player.increaseMaxHp(amount, true);
+        GameStateListener.setTimeout(30);
+    }
+
+    /*
+     * keys <ruby|emerald|sapphire|all>: obtain the Act 4 keys through the
+     * game's ObtainKeyEffect, as BaseMod's "key add" does, and make the final
+     * act available (AASTS_KEY_GIFTS). Not "key": that word is the keyboard
+     * command. The state listener holds the published state until the
+     * effect has landed (ObtainKeyEffect is one of the obtain effects it
+     * waits for).
+     */
+    private static void executeKeyGiftCommand(String[] tokens) throws InvalidCommandException {
+        String which = tokens.length > 1 ? tokens[1] : "";
+        boolean all = which.equals("all");
+        if (!all && !which.equals("ruby") && !which.equals("emerald") && !which.equals("sapphire")) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, which);
+        }
+        Settings.isFinalActAvailable = true;
+        if ((all || which.equals("ruby")) && !Settings.hasRubyKey) {
+            AbstractDungeon.topLevelEffects.add(new ObtainKeyEffect(ObtainKeyEffect.KeyColor.RED));
+        }
+        if ((all || which.equals("emerald")) && !Settings.hasEmeraldKey) {
+            AbstractDungeon.topLevelEffects.add(new ObtainKeyEffect(ObtainKeyEffect.KeyColor.GREEN));
+        }
+        if ((all || which.equals("sapphire")) && !Settings.hasSapphireKey) {
+            AbstractDungeon.topLevelEffects.add(new ObtainKeyEffect(ObtainKeyEffect.KeyColor.BLUE));
+        }
+        GameStateListener.setTimeout(30);
+    }
+
+    /*
+     * act <2|3|4>: leave this room for the start of that act, the way
+     * BaseMod's "act" console command does: the room is marked complete and
+     * the dungeon transition the game runs after a boss builds the new act
+     * (dungeonTransitionSetup heals, resets the act's lists and counts the
+     * act up). The floor counter is set to where it stands at that act's
+     * start in a played run (17, 34, 51), so floor numbers read as they
+     * would. For fuzz games that are to cover the late acts
+     * (AASTS_START_ACT); sent last, after every other gift at Neow.
+     */
+    private static void executeActJumpCommand(String[] tokens) throws InvalidCommandException {
+        String[] dungeons = {null, "Exordium", "TheCity", "TheBeyond", "TheEnding"};
+        int act;
+        try {
+            act = Integer.parseInt(tokens.length > 1 ? tokens[1] : "");
+        }
+        catch (NumberFormatException e) {
+            act = -1;
+        }
+        if (act < 2 || act > 4) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens.length > 1 ? tokens[1] : "");
+        }
+        AbstractDungeon.player.hand.group.clear();
+        AbstractDungeon.actionManager.clear();
+        AbstractDungeon.effectsQueue.clear();
+        AbstractDungeon.effectList.clear();
+        AbstractDungeon.floorNum = (act - 1) * 17;
+        CardCrawlGame.nextDungeon = dungeons[act];
+        CardCrawlGame.dungeonTransitionScreen = new DungeonTransitionScreen(dungeons[act]);
+        AbstractDungeon.actNum = act - 1;
+        AbstractDungeon.getCurrRoom().phase = AbstractRoom.RoomPhase.COMPLETE;
+        GameStateListener.setTimeout(30);
     }
 
     /*
