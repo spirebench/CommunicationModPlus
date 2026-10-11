@@ -138,6 +138,32 @@ public class GameStateListener {
         }
     }
 
+    // Snapshots taken after each hit on a monster during the player's own
+    // command, before its reaction (PostDamageSnapshotPatch, bug #46). They
+    // ride on every ready state until the next command clears them.
+    private static final ArrayList<HashMap<String, Object>> actionSnapshots = new ArrayList<HashMap<String, Object>>();
+    private static final int MAX_ACTION_SNAPSHOTS = 64;
+
+    public static void captureActionSnapshot(String label, int monsterIndex, String monsterName) {
+        if (!myTurn || !CommandExecutor.isInDungeon() || AbstractDungeon.getCurrRoom() == null
+            || AbstractDungeon.getCurrRoom().phase != AbstractRoom.RoomPhase.COMBAT
+            || actionSnapshots.size() >= MAX_ACTION_SNAPSHOTS) {
+            return;
+        }
+        HashMap<String, Object> snapshot = GameStateConverter.captureCompactCombatSnapshot(label, monsterIndex, monsterName);
+        if (snapshot != null) {
+            actionSnapshots.add(snapshot);
+        }
+    }
+
+    public static void clearActionSnapshots() {
+        actionSnapshots.clear();
+    }
+
+    public static ArrayList<HashMap<String, Object>> getActionSnapshots() {
+        return new ArrayList<HashMap<String, Object>>(actionSnapshots);
+    }
+
     public static void noteCardObtainStarted(AbstractCard card, String destination) {
         if (card == null || AbstractDungeon.getCurrRoom() == null || AbstractDungeon.getCurrRoom().phase != AbstractRoom.RoomPhase.COMBAT) {
             return;
@@ -258,6 +284,7 @@ public class GameStateListener {
         lastDeliveredTurn = -1;
         lastAccountedTurn = -1;
         startedObtains.clear();
+        actionSnapshots.clear();
     }
 
     /**

@@ -55,6 +55,11 @@ public class CommandExecutor {
             throw new InvalidCommandException("Invalid command: " + tokens[0] + ". Possible commands: " + getAvailableCommands());
         }
         String command_tail = command.substring(tokens[0].length());
+        // The post-damage snapshots belong to one command: an acting one
+        // starts a new set (bug #46). A poll leaves them for the harness.
+        if (!tokens[0].equals("state") && !tokens[0].equals("wait")) {
+            GameStateListener.clearActionSnapshots();
+        }
         if (CommandExecutor.isPotionGift(tokens)) {
             // potion <id>: the hidden gift form, told apart from
             // "potion use|discard <slot>" by its second word.

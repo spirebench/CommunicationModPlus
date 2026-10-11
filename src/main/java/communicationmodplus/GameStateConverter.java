@@ -617,6 +617,12 @@ public class GameStateConverter {
             if (missing != null) {
                 state.put("intermediate_states_missing", missing);
             }
+            // After each hit on a monster during the last command, before its
+            // reaction (PostDamageSnapshotPatch, bug #46).
+            ArrayList<HashMap<String, Object>> hits = GameStateListener.getActionSnapshots();
+            if (!hits.isEmpty()) {
+                state.put("action_snapshots", hits);
+            }
         }
         return state;
     }
