@@ -21,9 +21,10 @@ public class GameStateListener {
     private static AbstractRoom.RoomPhase previousPhase = null;
     private static boolean previousGridSelectConfirmUp = false;
     private static int previousGold = 99;
-    // The card list on the card reward screen when a state was last published:
-    // every open of the screen assigns a new one (see cardRewardScreenChanged).
-    private static Object previousCardRewardGroup = null;
+    // The cards on the card reward or grid screen when a state was last
+    // published: an open of either assigns a new list or group, so a
+    // replacement shows as a new object (see screenContentChanged).
+    private static Object previousScreenContent = null;
     private static boolean externalChange = false;
     private static boolean myTurn = false;
     private static boolean blocked = false;
@@ -271,7 +272,7 @@ public class GameStateListener {
         previousPhase = null;
         previousGridSelectConfirmUp = false;
         previousGold = 99;
-        previousCardRewardGroup = null;
+        previousScreenContent = null;
         externalChange = false;
         myTurn = false;
         blocked = false;
@@ -388,7 +389,7 @@ public class GameStateListener {
         // The state has always changed in some way when one of these variables is different.
         // However, the state may not be finished changing, so we need to do some additional checks.
         if (newScreen != previousScreen || newScreenUp != previousScreenUp || newPhase != previousPhase
-            || cardRewardScreenChanged(newScreen, newScreenUp)) {
+            || screenContentChanged(newScreen, newScreenUp)) {
             if (inCombat) {
                 // In combat, newScreenUp being true indicates an action that requires our immediate attention.
                 if (newScreenUp) {
@@ -407,7 +408,7 @@ public class GameStateListener {
                 previousScreenUp = newScreenUp;
                 previousScreen = newScreen;
                 previousPhase = newPhase;
-                previousCardRewardGroup = currentCardRewardGroup();
+                previousScreenContent = currentScreenContent();
                 return false;
             }
         } else if (waitOneUpdate) {
@@ -456,22 +457,37 @@ public class GameStateListener {
     }
 
     /*
-     * A card reward screen that is not the one last published. Screen type,
-     * screen-up and room phase alone cannot tell two of them apart when the
-     * one in between closed while nothing was published: Nilry's Codex's pick
-     * at the end of a turn, then -- Mayhem playing Time Eater's twelfth card
-     * at the start of the next, which ends that turn early -- a second Codex
-     * pick. It matched the last published state field for field, was never
-     * reported ready, and the run was given up as wedged five times over
-     * (FZ260FLNIM6RQ, bug #222). Every open assigns the screen a new list.
+     * A card reward or grid screen that is not the one last published.
+     * Screen type, screen-up and room phase alone cannot tell two of them
+     * apart when the one in between closed while nothing was published:
+     * Nilry's Codex's pick at the end of a turn, then -- Mayhem playing Time
+     * Eater's twelfth card at the start of the next, which ends that turn
+     * early -- a second Codex pick (FZ260FLNIM6RQ, bug #222); two Scry grids
+     * in a row (FZ92IMVB9MCA0, bug #232). The second matched the last
+     * published state field for field, was never reported ready, and the run
+     * was given up as wedged. Every open of the card reward screen assigns it
+     * a new list; ScryAction opens the grid on a new group. A grid opened on a
+     * pile the game reuses (the master deck) keeps its group and is not told
+     * apart, as before.
      */
-    private static boolean cardRewardScreenChanged(AbstractDungeon.CurrentScreen newScreen, boolean newScreenUp) {
-        return newScreen == AbstractDungeon.CurrentScreen.CARD_REWARD && newScreenUp
-            && currentCardRewardGroup() != previousCardRewardGroup;
+    private static boolean screenContentChanged(AbstractDungeon.CurrentScreen newScreen, boolean newScreenUp) {
+        if (!newScreenUp) {
+            return false;
+        }
+        if (newScreen != AbstractDungeon.CurrentScreen.CARD_REWARD && newScreen != AbstractDungeon.CurrentScreen.GRID) {
+            return false;
+        }
+        return currentScreenContent() != previousScreenContent;
     }
 
-    private static Object currentCardRewardGroup() {
-        return AbstractDungeon.cardRewardScreen == null ? null : AbstractDungeon.cardRewardScreen.rewardGroup;
+    private static Object currentScreenContent() {
+        if (AbstractDungeon.screen == AbstractDungeon.CurrentScreen.CARD_REWARD) {
+            return AbstractDungeon.cardRewardScreen == null ? null : AbstractDungeon.cardRewardScreen.rewardGroup;
+        }
+        if (AbstractDungeon.screen == AbstractDungeon.CurrentScreen.GRID) {
+            return AbstractDungeon.gridSelectScreen == null ? null : AbstractDungeon.gridSelectScreen.targetGroup;
+        }
+        return null;
     }
 
     // Any pending card-obtain effect on the four effect lists AbstractDungeon
@@ -563,7 +579,7 @@ public class GameStateListener {
                 previousScreen = AbstractDungeon.screen;
                 previousScreenUp = AbstractDungeon.isScreenUp;
                 previousGold = AbstractDungeon.player.gold;
-                previousCardRewardGroup = currentCardRewardGroup();
+                previousScreenContent = currentScreenContent();
                 previousGridSelectConfirmUp = AbstractDungeon.gridSelectScreen.confirmScreenUp;
                 timeout = 0;
             }
