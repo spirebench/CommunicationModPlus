@@ -151,7 +151,7 @@ public class GameStateListener {
             || actionSnapshots.size() >= MAX_ACTION_SNAPSHOTS) {
             return;
         }
-        HashMap<String, Object> snapshot = GameStateConverter.captureCompactCombatSnapshot(label, monsterIndex, monsterName);
+        HashMap<String, Object> snapshot = GameStateConverter.captureHitSnapshot(label, monsterIndex, monsterName);
         if (snapshot != null) {
             actionSnapshots.add(snapshot);
         }

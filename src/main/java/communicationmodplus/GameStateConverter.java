@@ -711,6 +711,40 @@ public class GameStateConverter {
         return snapshot;
     }
 
+    /**
+     * A snapshot around one hit on a monster (PostDamageSnapshotPatch, bug
+     * #46): the monsters alone, which is all the harness reads from it. The
+     * full compact snapshot copied the four piles into each of up to 64 hits
+     * per command, and with a 527-card draw pile a single state carried 2.7
+     * MB of them; the heap filled and the JVM hung (FZ217B50YRV2V,
+     * FZ219U03QLCXW). It also took the cards in flight that belong to the
+     * next intermediate snapshot.
+     */
+    public static HashMap<String, Object> captureHitSnapshot(String label, int monsterIndex, String monsterName) {
+        if (AbstractDungeon.getCurrRoom() == null || AbstractDungeon.getCurrRoom().monsters == null) {
+            return null;
+        }
+        HashMap<String, Object> snapshot = new HashMap<String, Object>();
+        snapshot.put("label", label);
+        snapshot.put("monster_index", monsterIndex);
+        if (monsterName != null) {
+            snapshot.put("monster_name", monsterName);
+        }
+        ArrayList<HashMap<String, Object>> monsterList = new ArrayList<HashMap<String, Object>>();
+        for (Object monsterObj : AbstractDungeon.getCurrRoom().monsters.monsters) {
+            AbstractMonster monster = (AbstractMonster)monsterObj;
+            HashMap<String, Object> mstate = new HashMap<String, Object>();
+            mstate.put("name", monster.name);
+            mstate.put("uid", GameStateConverter.monsterUid(monster));
+            mstate.put("current_hp", monster.currentHealth);
+            mstate.put("block", monster.currentBlock);
+            mstate.put("is_gone", monster.isDeadOrEscaped());
+            monsterList.add(mstate);
+        }
+        snapshot.put("monsters", monsterList);
+        return snapshot;
+    }
+
     private static ArrayList<HashMap<String, Object>> compactPileSnapshot(CardGroup group) {
         ArrayList<HashMap<String, Object>> out = new ArrayList<HashMap<String, Object>>();
         if (group == null || group.group == null) {
