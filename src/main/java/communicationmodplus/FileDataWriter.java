@@ -20,6 +20,8 @@ public class FileDataWriter implements Runnable {
     private final Path finalPath;
     private final Path parentDir;
     private static final Logger logger = LogManager.getLogger(FileDataWriter.class.getName());
+    // Characters of each published message that the log keeps.
+    private static final int LOGGED_HEAD = 300;
     private boolean verbose;
     // Serialises publishing to the output file between this thread and the
     // crash marker, which is written from the render thread (GameCrashReporter).
@@ -51,7 +53,12 @@ public class FileDataWriter implements Runnable {
             try {
                 String message = queue.take();
                 if (verbose) {
-                    logger.info("Preparing to write message: " + message);
+                    // The head only: ModTheSpire's console window keeps every line logged, and
+                    // whole states (a state per poll, tens of KB each) ran games out of their
+                    // 1 GB heap (FZ79880BLKX1K, FZ7887I3V4GRL, 2026-10-15). The harness archives
+                    // every state it reads.
+                    logger.info("Preparing to write message (" + message.length() + " chars): "
+                        + (message.length() > LOGGED_HEAD ? message.substring(0, LOGGED_HEAD) + "..." : message));
                 }
                 synchronized (PUBLISH_LOCK) {
                     if (crashed) {
