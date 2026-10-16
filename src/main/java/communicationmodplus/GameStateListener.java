@@ -422,7 +422,12 @@ public class GameStateListener {
         // our attention, like retaining a card, occur after the end turn is queued, but the previous cases
         // cover those actions. We would like to avoid registering other state changes after the end turn
         // command but before the game actually ends your turn.
-        if (inCombat && AbstractDungeon.player.endTurnQueued) {
+        // Not while a screen is up: the turn cannot end until its pick is made.
+        // The Time Eater's twelfth card ends the turn early (endTurnQueued) with
+        // a Scry grid from the same play still open; the grid was published as
+        // it opened, but each pick on it changes no screen and was held here,
+        // so the game was never ready again (FZ800CNYVBIHF, bug #286).
+        if (inCombat && AbstractDungeon.player.endTurnQueued && !newScreenUp) {
             return false;
         }
         // If some other code registered a state change through registerStateChange(), or if we notice a state
