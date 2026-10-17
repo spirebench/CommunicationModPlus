@@ -636,8 +636,7 @@ public class CommandExecutor {
      * is static: skipped, Neow's "[Talk]" stayed at its head, the next room
      * event appended its own after it, and every click landed one option over
      * -- Masked Bandits' "Pay" fought, "Talk" paid and "Fight!" did nothing
-     * (FZ39XPEUT9FTI, FZ67NWYX70I56, bug #230; after an act jump alone,
-     * JZ352JZ6IM4PQ, bug #296).
+     * (FZ39XPEUT9FTI, FZ67NWYX70I56, bug #230).
      */
     private static void leaveCurrentEvent(String why) {
         AbstractRoom left = AbstractDungeon.getCurrRoom();
@@ -668,8 +667,12 @@ public class CommandExecutor {
         AbstractDungeon.effectsQueue.clear();
         AbstractDungeon.effectList.clear();
         // An act-opening start floor (18, 35, 52) is reached by this jump
-        // alone, with no floor jump after it (JZ352JZ6IM4PQ, bug #296).
-        leaveCurrentEvent("act jump");
+        // alone, with no floor jump after it (JZ352JZ6IM4PQ, bug #296). The
+        // list only: Neow's room stays current, and is rendered, until the
+        // transition to the next dungeon, so its event is not disposed here
+        // (disposed, NeowEvent.render threw a NullPointerException and every
+        // later-act start crashed the game, round67 fuzz1096-1098).
+        com.megacrit.cardcrawl.events.RoomEventDialog.optionList.clear();
         AbstractDungeon.floorNum = (act - 1) * 17;
         CardCrawlGame.nextDungeon = dungeons[act];
         CardCrawlGame.dungeonTransitionScreen = new DungeonTransitionScreen(dungeons[act]);
