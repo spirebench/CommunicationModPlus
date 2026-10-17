@@ -630,6 +630,27 @@ public class CommandExecutor {
      * would. For fuzz games that are to cover the late acts
      * (AASTS_START_ACT); sent last, after every other gift at Neow.
      */
+    /*
+     * Leave the current room's event as the game does when the player walks
+     * out of it (AbstractEvent.dispose). The room-event dialog's option list
+     * is static: skipped, Neow's "[Talk]" stayed at its head, the next room
+     * event appended its own after it, and every click landed one option over
+     * -- Masked Bandits' "Pay" fought, "Talk" paid and "Fight!" did nothing
+     * (FZ39XPEUT9FTI, FZ67NWYX70I56, bug #230; after an act jump alone,
+     * JZ352JZ6IM4PQ, bug #296).
+     */
+    private static void leaveCurrentEvent(String why) {
+        AbstractRoom left = AbstractDungeon.getCurrRoom();
+        if (left != null && left.event != null) {
+            try {
+                left.event.dispose();
+            } catch (RuntimeException e) {
+                logger.info(why + ": disposing the current event failed: " + e);
+            }
+        }
+        com.megacrit.cardcrawl.events.RoomEventDialog.optionList.clear();
+    }
+
     private static void executeActJumpCommand(String[] tokens) throws InvalidCommandException {
         String[] dungeons = {null, "Exordium", "TheCity", "TheBeyond", "TheEnding"};
         int act;
@@ -646,6 +667,9 @@ public class CommandExecutor {
         AbstractDungeon.actionManager.clear();
         AbstractDungeon.effectsQueue.clear();
         AbstractDungeon.effectList.clear();
+        // An act-opening start floor (18, 35, 52) is reached by this jump
+        // alone, with no floor jump after it (JZ352JZ6IM4PQ, bug #296).
+        leaveCurrentEvent("act jump");
         AbstractDungeon.floorNum = (act - 1) * 17;
         CardCrawlGame.nextDungeon = dungeons[act];
         CardCrawlGame.dungeonTransitionScreen = new DungeonTransitionScreen(dungeons[act]);
@@ -699,21 +723,7 @@ public class CommandExecutor {
         }
         java.util.Random pick = new java.util.Random(Settings.seed * 31L + floor);
         MapRoomNode node = candidates.get(pick.nextInt(candidates.size()));
-        // Leave the current room's event as the game does when the player walks
-        // out of it (AbstractEvent.dispose). The room-event dialog's option
-        // list is static: skipped, Neow's "[Talk]" stayed at its head, the next
-        // room event appended its own after it, and every click landed one
-        // option over -- Masked Bandits' "Pay" fought, "Talk" paid and
-        // "Fight!" did nothing (FZ39XPEUT9FTI, FZ67NWYX70I56, bug #230).
-        AbstractRoom left = AbstractDungeon.getCurrRoom();
-        if (left != null && left.event != null) {
-            try {
-                left.event.dispose();
-            } catch (RuntimeException e) {
-                logger.info("floor jump: disposing the current event failed: " + e);
-            }
-        }
-        com.megacrit.cardcrawl.events.RoomEventDialog.optionList.clear();
+        leaveCurrentEvent("floor jump");
         AbstractDungeon.setCurrMapNode(node);
         node.taken = true;
         node.room.phase = AbstractRoom.RoomPhase.COMPLETE;
