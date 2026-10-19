@@ -125,6 +125,24 @@ public class CommandExecutor {
             case "card":
                 executeCardGiftCommand(tokens, command_tail.trim());
                 return true;
+            case "sethp":
+                executeSetHpCommand(tokens);
+                return true;
+            case "setgold":
+                executeSetGoldCommand(tokens);
+                return true;
+            case "setplaytime":
+                executeSetPlaytimeCommand(tokens);
+                return true;
+            case "win":
+                executeWinCommand();
+                return true;
+            case "deck":
+                executeDeckCommand(tokens);
+                return true;
+            case "abandon":
+                executeAbandonCommand();
+                return true;
 
             default:
                 logger.info("This should never happen.");
@@ -166,7 +184,8 @@ public class CommandExecutor {
     }
 
     public static boolean isCommandAvailable(String command) {
-        if (command.equals("relic") || command.equals("card") || command.equals("maxhp") || command.equals("keys") || command.equals("act") || command.equals("floor")) {
+        if (command.equals("relic") || command.equals("card") || command.equals("maxhp") || command.equals("keys") || command.equals("act") || command.equals("floor")
+                || command.equals("sethp") || command.equals("setgold") || command.equals("setplaytime") || command.equals("deck") || command.equals("abandon")) {
             // A test hook, not a move: deliberately left out of
             // available_commands so nothing that reads that list offers it.
             return isInDungeon();
@@ -175,6 +194,10 @@ public class CommandExecutor {
             return isConfirmCommandAvailable();
         } else if (command.equals("skip") || command.equals("cancel") || command.equals("return") || command.equals("leave")) {
             return isCancelCommandAvailable();
+        } else if (command.equals("win")) {
+            // A test hook too: only inside a fight, and only once it is the
+            // player's to act in (the room is in COMBAT).
+            return isInDungeon() && AbstractDungeon.getCurrRoom().phase == AbstractRoom.RoomPhase.COMBAT;
         } else {
             return getAvailableCommands().contains(command);
         }
@@ -854,6 +877,177 @@ public class CommandExecutor {
             card.upgrade();
         }
         AbstractDungeon.effectList.add(new ShowCardAndObtainEffect(card, (float)Settings.WIDTH / 2.0f, (float)Settings.HEIGHT / 2.0f));
+        GameStateListener.setTimeout(30);
+    }
+
+    /*
+     * The streamer benchmark's hooks (docs/streamer_bench.md). Its builder
+     * replays a recorded human run and skips the fights, so it has to put
+     * the run's own HP, gold and deck back where the record says they were.
+     * Like the gifts, none of these is a move and none is listed in
+     * available_commands.
+     *
+     * sethp <hp> [<max hp>]: set the player's HP, and max HP when given;
+     * HP is clamped to max HP. No relic or power hears of it (no heal, no
+     * HP loss), which is the point: the record already includes them.
+     */
+    private static void executeSetHpCommand(String[] tokens) throws InvalidCommandException {
+        int hp;
+        int maxHp = AbstractDungeon.player.maxHealth;
+        try {
+            hp = Integer.parseInt(tokens.length > 1 ? tokens[1] : "");
+            if (tokens.length > 2) {
+                maxHp = Integer.parseInt(tokens[2]);
+            }
+        }
+        catch (NumberFormatException e) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, String.join(" ", tokens));
+        }
+        if (hp < 1 || maxHp < 1) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, String.join(" ", tokens));
+        }
+        AbstractDungeon.player.maxHealth = maxHp;
+        AbstractDungeon.player.currentHealth = Math.min(hp, maxHp);
+        AbstractDungeon.player.healthBarUpdatedEvent();
+        GameStateListener.setTimeout(30);
+    }
+
+    /* setgold <n>: set the player's gold, silently (no Ectoplasm, no Bloody Idol). */
+    private static void executeSetGoldCommand(String[] tokens) throws InvalidCommandException {
+        int gold;
+        try {
+            gold = Integer.parseInt(tokens.length > 1 ? tokens[1] : "");
+        }
+        catch (NumberFormatException e) {
+            gold = -1;
+        }
+        if (gold < 0) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens.length > 1 ? tokens[1] : "");
+        }
+        AbstractDungeon.player.gold = gold;
+        AbstractDungeon.player.displayGold = gold;
+        GameStateListener.setTimeout(30);
+    }
+
+    /*
+     * setplaytime <seconds>: set the run's clock. Not cosmetic: Secret Portal
+     * joins Act 3's event pool only once CardCrawlGame.playtime reaches 800 s
+     * (AbstractDungeon.getShrine), so a replay that reaches Act 3 in minutes
+     * draws from a different pool than the player it replays, and lands on a
+     * different event.
+     */
+    private static void executeSetPlaytimeCommand(String[] tokens) throws InvalidCommandException {
+        float seconds;
+        try {
+            seconds = Float.parseFloat(tokens.length > 1 ? tokens[1] : "");
+        }
+        catch (NumberFormatException e) {
+            seconds = -1.0f;
+        }
+        if (seconds < 0.0f) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens.length > 1 ? tokens[1] : "");
+        }
+        CardCrawlGame.playtime = seconds;
+        GameStateListener.setTimeout(30);
+    }
+
+    /*
+     * win: end the current fight as won, as if the last blow had landed.
+     * Every monster still standing dies through its own die(), so death
+     * triggers run and the room's own end-of-battle code builds the reward
+     * screen from the run's persistent generators, exactly as a played fight
+     * would. cannotLose is cleared first: while it is set (Awakened One's
+     * first form, the Darklings) die() does nothing. A monster whose die()
+     * still leaves it standing is marked dying outright, since the room ends
+     * only once every monster isDying or isEscaping.
+     */
+    private static void executeWinCommand() {
+        AbstractRoom room = AbstractDungeon.getCurrRoom();
+        room.cannotLose = false;
+        for (AbstractMonster m : room.monsters.monsters) {
+            if (m.isDying || m.isDead || m.isEscaping || m.escaped) continue;
+            m.halfDead = false;
+            m.currentHealth = 0;
+            try {
+                m.die();
+            } catch (RuntimeException e) {
+                logger.info("win: " + m.id + ".die() threw " + e);
+            }
+            if (!m.isDying && !m.isDead) {
+                m.isDying = true;
+            }
+        }
+        GameStateListener.setTimeout(30);
+    }
+
+    /*
+     * deck remove|upgrade|add <card id>[+<upgrades>]: change the master deck
+     * directly, in the .run file's card notation ("Bash+1", "Searing
+     * Blow+3"). remove and upgrade act on one copy with exactly that many
+     * upgrades; add puts a fresh copy in without ShowCardAndObtainEffect, so
+     * no egg relic upgrades it on the way in. For the record's deck changes
+     * the builder cannot replay through the game itself (a fight's Lesson
+     * Learned, a Parasite from Writhing Mass).
+     */
+    private static void executeDeckCommand(String[] tokens) throws InvalidCommandException {
+        if (tokens.length < 3) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.MISSING_ARGUMENT);
+        }
+        String op = tokens[1];
+        String spec = String.join(" ", java.util.Arrays.copyOfRange(tokens, 2, tokens.length)).trim();
+        int upgrades = 0;
+        int plus = spec.lastIndexOf('+');
+        if (plus > 0) {
+            try {
+                upgrades = Integer.parseInt(spec.substring(plus + 1));
+                spec = spec.substring(0, plus);
+            }
+            catch (NumberFormatException e) {
+                throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, spec);
+            }
+        }
+        String id = CommandExecutor.findCardId(spec);
+        if (id == null) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, spec);
+        }
+        if (op.equals("add")) {
+            AbstractCard card = CardLibrary.getCard(id).makeCopy();
+            for (int i = 0; i < upgrades && card.canUpgrade(); ++i) {
+                card.upgrade();
+            }
+            AbstractDungeon.player.masterDeck.addToTop(card);
+            GameStateListener.setTimeout(30);
+            return;
+        }
+        AbstractCard found = null;
+        for (AbstractCard c : AbstractDungeon.player.masterDeck.group) {
+            if (!c.cardID.equals(id) || c.timesUpgraded != upgrades) continue;
+            found = c;
+            break;
+        }
+        if (found == null) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, spec + "+" + upgrades);
+        }
+        if (op.equals("remove")) {
+            AbstractDungeon.player.masterDeck.removeCard(found);
+        } else if (op.equals("upgrade")) {
+            found.upgrade();
+            AbstractDungeon.player.bottledCardUpgradeCheck(found);
+        } else {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, op);
+        }
+        GameStateListener.setTimeout(30);
+    }
+
+    /*
+     * abandon: give up the run the way the pause menu's Abandon Run does
+     * (ConfirmPopup ABANDON_MID_RUN): the death screen opens, and its
+     * proceed returns to the main menu, ready for the next start.
+     */
+    private static void executeAbandonCommand() {
+        AbstractDungeon.closeCurrentScreen();
+        AbstractDungeon.player.isDead = true;
+        AbstractDungeon.deathScreen = new com.megacrit.cardcrawl.screens.DeathScreen(AbstractDungeon.getMonsters());
         GameStateListener.setTimeout(30);
     }
 
