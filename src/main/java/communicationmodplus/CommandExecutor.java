@@ -152,6 +152,12 @@ public class CommandExecutor {
             case "rewardpotion":
                 executeRewardPotionCommand(tokens);
                 return true;
+            case "rng":
+                executeRngCommand(tokens);
+                return false;
+            case "leaveroom":
+                executeLeaveRoomCommand(tokens);
+                return true;
             case "neowmini":
                 executeNeowMiniCommand(tokens);
                 return true;
@@ -204,7 +210,8 @@ public class CommandExecutor {
     public static boolean isCommandAvailable(String command) {
         if (command.equals("relic") || command.equals("card") || command.equals("maxhp") || command.equals("keys") || command.equals("act") || command.equals("floor")
                 || command.equals("sethp") || command.equals("setgold") || command.equals("setplaytime") || command.equals("deck") || command.equals("abandon") || command.equals("shopcard")
-                || command.equals("shoppotion") || command.equals("rewardpotion") || command.equals("neowmini")) {
+                || command.equals("shoppotion") || command.equals("rewardpotion") || command.equals("neowmini")
+                || command.equals("rng") || command.equals("leaveroom")) {
             // A test hook, not a move: deliberately left out of
             // available_commands so nothing that reads that list offers it.
             return isInDungeon();
@@ -1254,6 +1261,79 @@ public class CommandExecutor {
             }
         }
         AbstractDungeon.combatRewardScreen.positionRewards();
+        GameStateListener.setTimeout(30);
+    }
+
+    private static final java.util.HashMap<String, Random> savedRngs = new java.util.HashMap<String, Random>();
+
+    /*
+     * rng save|restore <name>, rng advance <name> <n>: keep a copy of one of
+     * the run's generators (AbstractDungeon.<name>Rng: monster, event,
+     * merchant, card, treasure, relic, potion, misc, cardRandom, ...), put
+     * the copy back, or draw from it n times. For the streamer benchmark's
+     * replay, where its skipped fights draw a generator a different number of
+     * times than the streamer's did (a Looter killed rolls gold the escaped
+     * one did not). A generator's state cannot be stepped back, so a draw to
+     * undo is undone by saving before it and restoring after.
+     */
+    private static void executeRngCommand(String[] tokens) throws InvalidCommandException {
+        if (tokens.length < 3) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.MISSING_ARGUMENT);
+        }
+        String op = tokens[1];
+        java.lang.reflect.Field field = null;
+        for (java.lang.reflect.Field f : AbstractDungeon.class.getFields()) {
+            if (f.getType() == Random.class && f.getName().equalsIgnoreCase(tokens[2] + "Rng")) field = f;
+        }
+        if (field == null) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens[2]);
+        }
+        try {
+            Random rng = (Random) field.get(null);
+            if (op.equals("save")) {
+                savedRngs.put(field.getName(), rng.copy());
+            } else if (op.equals("restore")) {
+                Random saved = savedRngs.remove(field.getName());
+                if (saved == null) {
+                    throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, "nothing saved for " + tokens[2]);
+                }
+                field.set(null, saved);
+            } else if (op.equals("advance") && tokens.length >= 4) {
+                int n = Integer.parseInt(tokens[3]);
+                for (int i = 0; i < n; ++i) {
+                    rng.random(99);
+                }
+            } else {
+                throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, op);
+            }
+        }
+        catch (IllegalAccessException | NumberFormatException e) {
+            throw new InvalidCommandException("rng: " + e);
+        }
+        CommunicationMod.mustSendGameState = true;
+    }
+
+    /*
+     * leaveroom: leave the current room for the map, from whatever screen it
+     * is on (a shop, an event, a reward screen), as if it were finished: the
+     * screen is closed, the room's rewards dropped, the room marked complete
+     * and the map opened on the current node. Not in a fight. For the
+     * streamer benchmark's repair of a floor whose screens are not the
+     * record's: the floor is dropped and its end state set from the record.
+     */
+    private static void executeLeaveRoomCommand(String[] tokens) throws InvalidCommandException {
+        AbstractRoom room = AbstractDungeon.getCurrRoom();
+        if (room == null || room.phase == AbstractRoom.RoomPhase.COMBAT) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, "in a fight");
+        }
+        if (AbstractDungeon.isScreenUp) {
+            AbstractDungeon.closeCurrentScreen();
+        }
+        leaveCurrentEvent("leaveroom");
+        room.rewards.clear();
+        AbstractDungeon.combatRewardScreen.rewards.clear();
+        room.phase = AbstractRoom.RoomPhase.COMPLETE;
+        AbstractDungeon.dungeonMapScreen.open(false);
         GameStateListener.setTimeout(30);
     }
 
