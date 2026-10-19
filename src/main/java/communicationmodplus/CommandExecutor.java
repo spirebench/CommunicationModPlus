@@ -153,8 +153,11 @@ public class CommandExecutor {
                 executeRewardPotionCommand(tokens);
                 return true;
             case "bossseen":
+                // No state change: returning true would clear the listener's
+                // waiting flag, which at the main menu nothing sets again, so
+                // every later state said ready_for_command false.
                 executeBossSeenCommand(tokens);
-                return true;
+                return false;
 
             default:
                 logger.info("This should never happen.");
