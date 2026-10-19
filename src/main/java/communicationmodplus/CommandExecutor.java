@@ -153,9 +153,8 @@ public class CommandExecutor {
                 executeRewardPotionCommand(tokens);
                 return true;
             case "neowmini":
-                // Nothing on screen changes until Neow is next clicked.
                 executeNeowMiniCommand(tokens);
-                return false;
+                return true;
             case "bossseen":
                 // No state change: returning true would clear the listener's
                 // waiting flag, which at the main menu nothing sets again, so
@@ -1220,11 +1219,19 @@ public class CommandExecutor {
         if (id == null && !spec.equals("none")) {
             throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, spec);
         }
+        // The screen's list is a copy of the room's (reopen() copies it back
+        // after a card reward), so an item is changed in place, and an item
+        // added or removed is added to or removed from both.
+        ArrayList<com.megacrit.cardcrawl.rewards.RewardItem> roomRewards = AbstractDungeon.getCurrRoom().rewards;
         if (tokens[1].equals("add")) {
             if (id == null) {
                 throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, spec);
             }
-            rewards.add(new com.megacrit.cardcrawl.rewards.RewardItem(PotionHelper.getPotion(id)));
+            com.megacrit.cardcrawl.rewards.RewardItem item = new com.megacrit.cardcrawl.rewards.RewardItem(PotionHelper.getPotion(id));
+            rewards.add(item);
+            if (roomRewards != rewards) {
+                roomRewards.add(item);
+            }
         } else {
             int index;
             try {
@@ -1236,10 +1243,14 @@ public class CommandExecutor {
             if (index < 0 || index >= rewards.size() || rewards.get(index).type != com.megacrit.cardcrawl.rewards.RewardItem.RewardType.POTION) {
                 throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.OUT_OF_BOUNDS, tokens[1]);
             }
+            com.megacrit.cardcrawl.rewards.RewardItem item = rewards.get(index);
             if (id == null) {
                 rewards.remove(index);
+                roomRewards.remove(item);
             } else {
-                rewards.set(index, new com.megacrit.cardcrawl.rewards.RewardItem(PotionHelper.getPotion(id)));
+                AbstractPotion potion = PotionHelper.getPotion(id);
+                item.potion = potion;
+                item.text = potion.name;
             }
         }
         AbstractDungeon.combatRewardScreen.positionRewards();
@@ -1247,19 +1258,33 @@ public class CommandExecutor {
     }
 
     /*
-     * neowmini: make Neow offer the two-option mini blessing. NeowEvent picks
-     * it when the profile's <CLASS>_SPIRITS count is 0 (the previous run ended
-     * before the Act 1 boss), but only for an unseeded run: a seeded start
-     * sets bossCount to 1, so a replay on a streamer's seed always got the
-     * four options. Sets the event's bossCount to 0 before its first click.
+     * neowmini: on Neow's first screen, offer the two-option mini blessing in
+     * place of the talk click. NeowEvent offers it when the profile's
+     * <CLASS>_SPIRITS count is 0 (the previous run ended before the Act 1
+     * boss), but only to an unseeded run: a seeded start sets bossCount to 1,
+     * so a replay on a streamer's seed always got the four options. Setting
+     * bossCount to 0 before the click did not take (the replay still got
+     * four), so this calls the event's own miniBlessing(), which the click
+     * calls when bossCount is 0: the same rewards, options and screenNum (3).
      */
     private static void executeNeowMiniCommand(String[] tokens) throws InvalidCommandException {
         AbstractRoom room = AbstractDungeon.getCurrRoom();
         if (room == null || !(room.event instanceof com.megacrit.cardcrawl.neow.NeowEvent)) {
             throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, "not at Neow");
         }
-        ReflectionHacks.setPrivate(room.event, com.megacrit.cardcrawl.neow.NeowEvent.class, "bossCount", 0);
-        CommunicationMod.mustSendGameState = true;
+        int screen = (Integer) ReflectionHacks.getPrivate(room.event, com.megacrit.cardcrawl.neow.NeowEvent.class, "screenNum");
+        if (screen != 0 && screen != 10) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, "Neow is past its first screen");
+        }
+        try {
+            java.lang.reflect.Method mini = com.megacrit.cardcrawl.neow.NeowEvent.class.getDeclaredMethod("miniBlessing");
+            mini.setAccessible(true);
+            mini.invoke(room.event);
+        }
+        catch (ReflectiveOperationException e) {
+            throw new InvalidCommandException("neowmini: " + e);
+        }
+        GameStateListener.setTimeout(30);
     }
 
     /*
