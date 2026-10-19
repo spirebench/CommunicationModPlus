@@ -1,3 +1,168 @@
+# CommunicationModPlus
+
+This fork of [CommunicationMod](https://github.com/ForgottenArbiter/CommunicationMod)
+is the game interface of SpireBench, an LLM agent harness for Slay the Spire.
+It is read through the [spirebench fork of spirecomm](https://github.com/spirebench/spirecomm).
+
+It builds on Orak's ModifiedCommunicationMod
+([Orak](https://github.com/krafton-ai/Orak) ships it as a jar only; its
+changes are reconstructed here as source, in commits authored by Orak's
+committers), and adds what SpireBench needs to show an agent exactly what
+happened in the game, to tell it reliably when the game is waiting for a
+command, and to set up test games.
+
+## What it adds
+
+### Talking to the client
+
+- **Files instead of a child process** (from Orak). Commands are read from
+  `input_file_path` and each state is written to `output_file_path`, through a
+  temporary file moved into place, so the client never reads half a state. The
+  mod announces itself with `READY`, and waits up to 600 s for its client.
+- **Crash reporting.** If the game crashes, the mod writes a crash marker to
+  the output file, and publishes nothing after it, so the client knows at once
+  instead of waiting on a frozen state.
+- **Bounded logging.** Only the first 300 characters of each published state
+  are logged, so long games no longer run out of heap.
+
+#### Why files
+
+Upstream launches the client as a child of the game and talks through its
+stdin and stdout. Files decouple the two processes:
+
+- Either side can start, stop or restart without the other. A harness can
+  launch the game itself, survive a game crash and relaunch it, or be
+  restarted and pick up the state the game is waiting on.
+- The client's stdout is its own: under the stdio protocol, anything it prints
+  is read as a command.
+- There is no 10 s window for the client to say it is ready, and no pipe that
+  stalls a writer while the other side is busy.
+- The latest state is always on disk, complete, so it can be re-read,
+  archived or inspected by hand, and the client can run in another container
+  or on another machine with a shared filesystem.
+
+The costs are a little latency, as both sides poll (the mod every 100 ms), and
+that only the newest state is kept: a state overwritten before the client reads
+it is gone. That is why the mod repeats the snapshots below on every ready state
+until the next command.
+
+### What happened between states
+
+Upstream reports the game only when it is waiting for input, so everything the
+enemies did, and everything that fired between turns, arrives as one net
+change. CommunicationModPlus snapshots the combat at each boundary and sends
+the snapshots with the next state, in `combat_state.intermediate_states`:
+
+- after the player's end-of-turn effects (`post_player_turn`);
+- before each monster acts (`pre_monster_turn`, with the monster's index and
+  name);
+- around the end of the round and the block resets (`post_monsters`,
+  `pre_round_end_queue`, `pre_monster_block_reset`, `monster_block_reset`,
+  `pre_player_turn`, `post_block_reset`);
+- before the start-of-turn relics fire (`player_turn_start`).
+
+Each snapshot holds the player's HP, block, gold, powers, orbs and stance,
+relic counters, the four card piles (names and ids), every monster's HP, block
+and powers, and the cards being added to the deck at that moment
+(`cards_in_flight`). A batch is repeated on every ready state until the next
+command, so a state republished in between does not lose it. A turn that
+arrives without snapshots carries `intermediate_states_missing`, saying why.
+
+During the player's own commands, the mod also snapshots the monsters before
+and after each hit (`action_snapshots`, `pre_damage`/`post_damage`), so a
+play's damage, block absorbed and the monster's reaction can be told apart.
+
+### More in each state
+
+- **Descriptions** (from Orak) of cards, with their current numbers filled in,
+  and of powers and relics. Power text is refreshed before it is read.
+- **Cards:** `is_glowing` (the gold border of a card with a synergy right now),
+  `bottled` (the Bottled relic holding it). Hand cards' damage and block are
+  recomputed against the player's current powers before they are sent.
+- **Monsters:** a `uid` that stays the same for a monster's whole life, so two
+  identical monsters can be told apart after a spawn shifts them. No monster
+  is reported with the placeholder DEBUG intent (from Orak).
+- **Player and map:** `stance`, and `has_emerald_key` on the map node of the
+  burning elite.
+- **Potions:** `requires_target` reports whether the potion asks for a target,
+  rather than whether it is thrown (Explosive Potion is thrown but hits every
+  enemy).
+- **Events:** the event's body text when the dialog has not shown it yet, and
+  in Match and Keep, the face-down cards by position and the last card
+  flipped (`last_flip`).
+
+### Telling when the game is ready
+
+A state is published as ready only once it has settled. The mod holds it while:
+
+- a card, key or potion being obtained has not yet landed;
+- a hand picker has just closed and its action has not drained;
+- a Smoke Bomb escape is playing out.
+
+It also reports a new card reward screen or card grid that replaces another
+with nothing published in between, and a pick on a grid while the turn is
+ending early. Without these, the game could look unchanged and never come
+ready.
+
+### Commands
+
+- `continue <class>` resumes the saved run of a character.
+- A potion cannot be used while a selection screen is open in combat (the
+  game would queue it behind the pick and never come ready).
+- Leaving a reward screen opened in a shop forfeits what is left on it, so it
+  does not reopen later.
+- First-time-user tips, including the Calling Bell nag, are dismissed, and
+  Neow's blessing is shown on a fresh profile.
+- Test-only commands, not listed in `available_commands`, set up games to
+  try particular situations: `relic <id>`, `potion <id>`, `card <id>
+  [upgrades]`, `maxhp <n>`, `keys <ruby|emerald|sapphire|all>`,
+  `act <2|3|4>` and `floor <n>`.
+
+## Building
+
+Put the game's and the mod loaders' jars in a `lib/` directory beside this
+repository, as upstream does:
+
+```
+lib/desktop-1.0.jar     # from the Slay the Spire install
+lib/ModTheSpire.jar     # Steam Workshop item 1605060445
+lib/BaseMod.jar         # Steam Workshop item 1605833019
+CommunicationMod/       # this repository
+```
+
+Then run `mvn package` (JDK 8 or later). The jar is written to
+`target/CommunicationModPlus.jar` and copied to `../_ModTheSpire/mods/`, with
+gson shaded in as `com.autoplay.gson`. Copy it into the game's `mods/`
+directory. The mod needs BaseMod.
+
+## Configuration
+
+The config directory is `CommunicationModPlus` (settings from an old
+`CommunicationMod` directory are copied over on first launch):
+
+```
+input_file_path=/path/to/comm_input.txt
+output_file_path=/path/to/comm_output.txt
+runAtGameStart=true
+```
+
+The client writes one command at a time to the input file, and reads each
+published state from the output file. A state is written to a temporary file
+and then moved into place, so the client never reads half of one. The `command`
+setting and the stdin/stdout protocol below are no longer used.
+
+## Reading the state from Python
+
+[spirebench/spirecomm](https://github.com/spirebench/spirecomm), the companion
+fork of spirecomm, parses CommunicationModPlus's states into Python objects,
+including every field listed above (`spirecomm.spire.game.Game.from_json`).
+Its `Coordinator` still uses the stdin/stdout protocol, so pair the parsers
+with a client that reads and writes the two files.
+
+The original README follows.
+
+---
+
 # CommunicationMod
 Slay the Spire mod that provides a protocol for allowing another process to control the game
 
