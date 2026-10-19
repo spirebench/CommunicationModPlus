@@ -1381,7 +1381,10 @@ public class CommandExecutor {
         if (AbstractDungeon.isScreenUp) {
             AbstractDungeon.closeCurrentScreen();
         }
-        leaveCurrentEvent("leaveroom");
+        // The event is left, not disposed: the room stays current, and is
+        // rendered, until the next room is entered, and a disposed event's
+        // render threw a NullPointerException (Dead Adventurer, c3a2cea8).
+        com.megacrit.cardcrawl.events.RoomEventDialog.optionList.clear();
         room.rewards.clear();
         AbstractDungeon.combatRewardScreen.rewards.clear();
         room.phase = AbstractRoom.RoomPhase.COMPLETE;
