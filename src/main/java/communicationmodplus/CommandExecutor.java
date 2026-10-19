@@ -152,6 +152,10 @@ public class CommandExecutor {
             case "rewardpotion":
                 executeRewardPotionCommand(tokens);
                 return true;
+            case "neowmini":
+                // Nothing on screen changes until Neow is next clicked.
+                executeNeowMiniCommand(tokens);
+                return false;
             case "bossseen":
                 // No state change: returning true would clear the listener's
                 // waiting flag, which at the main menu nothing sets again, so
@@ -201,7 +205,7 @@ public class CommandExecutor {
     public static boolean isCommandAvailable(String command) {
         if (command.equals("relic") || command.equals("card") || command.equals("maxhp") || command.equals("keys") || command.equals("act") || command.equals("floor")
                 || command.equals("sethp") || command.equals("setgold") || command.equals("setplaytime") || command.equals("deck") || command.equals("abandon") || command.equals("shopcard")
-                || command.equals("shoppotion") || command.equals("rewardpotion")) {
+                || command.equals("shoppotion") || command.equals("rewardpotion") || command.equals("neowmini")) {
             // A test hook, not a move: deliberately left out of
             // available_commands so nothing that reads that list offers it.
             return isInDungeon();
@@ -1240,6 +1244,22 @@ public class CommandExecutor {
         }
         AbstractDungeon.combatRewardScreen.positionRewards();
         GameStateListener.setTimeout(30);
+    }
+
+    /*
+     * neowmini: make Neow offer the two-option mini blessing. NeowEvent picks
+     * it when the profile's <CLASS>_SPIRITS count is 0 (the previous run ended
+     * before the Act 1 boss), but only for an unseeded run: a seeded start
+     * sets bossCount to 1, so a replay on a streamer's seed always got the
+     * four options. Sets the event's bossCount to 0 before its first click.
+     */
+    private static void executeNeowMiniCommand(String[] tokens) throws InvalidCommandException {
+        AbstractRoom room = AbstractDungeon.getCurrRoom();
+        if (room == null || !(room.event instanceof com.megacrit.cardcrawl.neow.NeowEvent)) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, "not at Neow");
+        }
+        ReflectionHacks.setPrivate(room.event, com.megacrit.cardcrawl.neow.NeowEvent.class, "bossCount", 0);
+        CommunicationMod.mustSendGameState = true;
     }
 
     /*
