@@ -146,6 +146,15 @@ public class CommandExecutor {
             case "shopcard":
                 executeShopCardCommand(tokens);
                 return true;
+            case "shoppotion":
+                executeShopPotionCommand(tokens);
+                return true;
+            case "rewardpotion":
+                executeRewardPotionCommand(tokens);
+                return true;
+            case "bossseen":
+                executeBossSeenCommand(tokens);
+                return true;
 
             default:
                 logger.info("This should never happen.");
@@ -188,10 +197,15 @@ public class CommandExecutor {
 
     public static boolean isCommandAvailable(String command) {
         if (command.equals("relic") || command.equals("card") || command.equals("maxhp") || command.equals("keys") || command.equals("act") || command.equals("floor")
-                || command.equals("sethp") || command.equals("setgold") || command.equals("setplaytime") || command.equals("deck") || command.equals("abandon") || command.equals("shopcard")) {
+                || command.equals("sethp") || command.equals("setgold") || command.equals("setplaytime") || command.equals("deck") || command.equals("abandon") || command.equals("shopcard")
+                || command.equals("shoppotion") || command.equals("rewardpotion")) {
             // A test hook, not a move: deliberately left out of
             // available_commands so nothing that reads that list offers it.
             return isInDungeon();
+        }
+        if (command.equals("bossseen")) {
+            // A test hook too, and set before a run starts, so not tied to a dungeon.
+            return true;
         }
         if(command.equals("confirm") || command.equalsIgnoreCase("proceed")) {
             return isConfirmCommandAvailable();
@@ -997,7 +1011,21 @@ public class CommandExecutor {
             throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.MISSING_ARGUMENT);
         }
         String op = tokens[1];
-        String spec = String.join(" ", java.util.Arrays.copyOfRange(tokens, 2, tokens.length)).trim();
+        int level = -1;
+        int first = 2;
+        if (op.equals("level")) {
+            if (tokens.length < 4) {
+                throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.MISSING_ARGUMENT);
+            }
+            try {
+                level = Integer.parseInt(tokens[2]);
+            }
+            catch (NumberFormatException e) {
+                throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens[2]);
+            }
+            first = 3;
+        }
+        String spec = String.join(" ", java.util.Arrays.copyOfRange(tokens, first, tokens.length)).trim();
         int upgrades = 0;
         int plus = spec.lastIndexOf('+');
         if (plus > 0) {
@@ -1033,6 +1061,20 @@ public class CommandExecutor {
         }
         if (op.equals("remove")) {
             AbstractDungeon.player.masterDeck.removeCard(found);
+        } else if (op.equals("level")) {
+            // In place, keeping the card's position and uuid: later picks by
+            // deck order (Falling, War Paint) must see the deck the streamer
+            // had. A bottled card is refused, since its relic holds it.
+            if (found.inBottleFlame || found.inBottleLightning || found.inBottleTornado) {
+                throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, spec + " is bottled");
+            }
+            AbstractCard card = CardLibrary.getCard(id).makeCopy();
+            for (int i = 0; i < level && card.canUpgrade(); ++i) {
+                card.upgrade();
+            }
+            card.uuid = found.uuid;
+            ArrayList<AbstractCard> group = AbstractDungeon.player.masterDeck.group;
+            group.set(group.indexOf(found), card);
         } else if (op.equals("upgrade")) {
             found.upgrade();
             AbstractDungeon.player.bottledCardUpgradeCheck(found);
@@ -1102,6 +1144,119 @@ public class CommandExecutor {
         card.price = old.price;
         colored.set(slot, card);
         GameStateListener.setTimeout(30);
+    }
+
+    private static String findPotionId(String name) {
+        for (String id : PotionHelper.getPotions(null, true)) {
+            if (id.equalsIgnoreCase(name)) return id;
+        }
+        return null;
+    }
+
+    /*
+     * shoppotion <slot> <potion id>: put this potion in the shop's potion slot
+     * <slot>, at the slot's price. For the streamer benchmark's replay: shop
+     * potions are drawn on potionRng, which the replay's skipped fights can
+     * leave out of step; the record names the stock, and this sets it.
+     */
+    private static void executeShopPotionCommand(String[] tokens) throws InvalidCommandException {
+        if (tokens.length < 3) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.MISSING_ARGUMENT);
+        }
+        if (AbstractDungeon.screen != AbstractDungeon.CurrentScreen.SHOP || AbstractDungeon.shopScreen == null) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, "not in a shop");
+        }
+        int slot;
+        try {
+            slot = Integer.parseInt(tokens[1]);
+        }
+        catch (NumberFormatException e) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens[1]);
+        }
+        ArrayList<com.megacrit.cardcrawl.shop.StorePotion> potions = ReflectionHacks.getPrivate(
+                AbstractDungeon.shopScreen, com.megacrit.cardcrawl.shop.ShopScreen.class, "potions");
+        if (slot < 0 || slot >= potions.size() || potions.get(slot).isPurchased) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.OUT_OF_BOUNDS, tokens[1]);
+        }
+        String spec = String.join(" ", java.util.Arrays.copyOfRange(tokens, 2, tokens.length)).trim();
+        String id = CommandExecutor.findPotionId(spec);
+        if (id == null) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, spec);
+        }
+        com.megacrit.cardcrawl.shop.StorePotion old = potions.get(slot);
+        AbstractPotion potion = PotionHelper.getPotion(id);
+        potion.posX = old.potion.posX;
+        potion.posY = old.potion.posY;
+        potion.hb.move(old.potion.hb.cX, old.potion.hb.cY);
+        old.potion = potion;
+        GameStateListener.setTimeout(30);
+    }
+
+    /*
+     * rewardpotion <index> <potion id|none>, rewardpotion add <potion id>: set
+     * the potion of the combat reward at <index> (an index into the reward
+     * screen's list), remove it, or add one. For the streamer benchmark's
+     * replay: a fight's drop roll and its potion are drawn on potionRng, and
+     * where the replay's generator is out of step the record says what the
+     * fight gave.
+     */
+    private static void executeRewardPotionCommand(String[] tokens) throws InvalidCommandException {
+        if (tokens.length < 3) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.MISSING_ARGUMENT);
+        }
+        if (AbstractDungeon.screen != AbstractDungeon.CurrentScreen.COMBAT_REWARD) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, "not on a reward screen");
+        }
+        ArrayList<com.megacrit.cardcrawl.rewards.RewardItem> rewards = AbstractDungeon.combatRewardScreen.rewards;
+        String spec = String.join(" ", java.util.Arrays.copyOfRange(tokens, 2, tokens.length)).trim();
+        String id = spec.equals("none") ? null : CommandExecutor.findPotionId(spec);
+        if (id == null && !spec.equals("none")) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, spec);
+        }
+        if (tokens[1].equals("add")) {
+            if (id == null) {
+                throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, spec);
+            }
+            rewards.add(new com.megacrit.cardcrawl.rewards.RewardItem(PotionHelper.getPotion(id)));
+        } else {
+            int index;
+            try {
+                index = Integer.parseInt(tokens[1]);
+            }
+            catch (NumberFormatException e) {
+                throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens[1]);
+            }
+            if (index < 0 || index >= rewards.size() || rewards.get(index).type != com.megacrit.cardcrawl.rewards.RewardItem.RewardType.POTION) {
+                throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.OUT_OF_BOUNDS, tokens[1]);
+            }
+            if (id == null) {
+                rewards.remove(index);
+            } else {
+                rewards.set(index, new com.megacrit.cardcrawl.rewards.RewardItem(PotionHelper.getPotion(id)));
+            }
+        }
+        AbstractDungeon.combatRewardScreen.positionRewards();
+        GameStateListener.setTimeout(30);
+    }
+
+    /*
+     * bossseen <KEY> <0|1>: set whether the profile has seen a boss, in memory
+     * (UnlockTracker.bossSeenPref; not flushed). initializeBoss forces the
+     * first unseen boss of an act's fixed order and shuffles with monsterRng
+     * only when all three are seen, so a replay of a run played on a fresh
+     * profile needs the streamer's flags before `start`.
+     */
+    private static void executeBossSeenCommand(String[] tokens) throws InvalidCommandException {
+        if (tokens.length < 3) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.MISSING_ARGUMENT);
+        }
+        String key = tokens[1].toUpperCase();
+        if (!java.util.Arrays.asList("GUARDIAN", "GHOST", "SLIME", "CHAMP", "AUTOMATON", "COLLECTOR", "CROW", "DONUT", "WIZARD").contains(key)
+                || !(tokens[2].equals("0") || tokens[2].equals("1"))) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens[1] + " " + tokens[2]);
+        }
+        com.megacrit.cardcrawl.unlock.UnlockTracker.bossSeenPref.putInteger(key, Integer.parseInt(tokens[2]));
+        CommunicationMod.mustSendGameState = true;  // nothing on screen changes, so answer at once
     }
 
     /*
