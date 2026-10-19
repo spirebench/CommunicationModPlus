@@ -143,6 +143,9 @@ public class CommandExecutor {
             case "abandon":
                 executeAbandonCommand();
                 return true;
+            case "shopcard":
+                executeShopCardCommand(tokens);
+                return true;
 
             default:
                 logger.info("This should never happen.");
@@ -185,7 +188,7 @@ public class CommandExecutor {
 
     public static boolean isCommandAvailable(String command) {
         if (command.equals("relic") || command.equals("card") || command.equals("maxhp") || command.equals("keys") || command.equals("act") || command.equals("floor")
-                || command.equals("sethp") || command.equals("setgold") || command.equals("setplaytime") || command.equals("deck") || command.equals("abandon")) {
+                || command.equals("sethp") || command.equals("setgold") || command.equals("setplaytime") || command.equals("deck") || command.equals("abandon") || command.equals("shopcard")) {
             // A test hook, not a move: deliberately left out of
             // available_commands so nothing that reads that list offers it.
             return isInDungeon();
@@ -1036,6 +1039,68 @@ public class CommandExecutor {
         } else {
             throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, op);
         }
+        GameStateListener.setTimeout(30);
+    }
+
+    /*
+     * shopcard <slot> <card id>[+N]: put this card in the shop's coloured-card
+     * slot <slot>, at the slot's position and price. For the streamer
+     * benchmark's replay: with The Courier, a bought coloured card is restocked
+     * by ShopScreen.purchaseCard from getCardFromPool(rollRarity(), type,
+     * false), whose rarity (cardRng) and price (merchantRng) are seeded but
+     * whose card is drawn with MathUtils.random, so no replay reproduces it.
+     * The replacement must share the slot card's type and rarity, which are
+     * the seeded part; anything else is refused.
+     */
+    private static void executeShopCardCommand(String[] tokens) throws InvalidCommandException {
+        if (tokens.length < 3) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.MISSING_ARGUMENT);
+        }
+        if (AbstractDungeon.screen != AbstractDungeon.CurrentScreen.SHOP || AbstractDungeon.shopScreen == null) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, "not in a shop");
+        }
+        int slot;
+        try {
+            slot = Integer.parseInt(tokens[1]);
+        }
+        catch (NumberFormatException e) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens[1]);
+        }
+        ArrayList<AbstractCard> colored = AbstractDungeon.shopScreen.coloredCards;
+        if (slot < 0 || slot >= colored.size()) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.OUT_OF_BOUNDS, tokens[1]);
+        }
+        String spec = String.join(" ", java.util.Arrays.copyOfRange(tokens, 2, tokens.length)).trim();
+        int upgrades = 0;
+        int plus = spec.lastIndexOf('+');
+        if (plus > 0) {
+            try {
+                upgrades = Integer.parseInt(spec.substring(plus + 1));
+                spec = spec.substring(0, plus);
+            }
+            catch (NumberFormatException e) {
+                throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, spec);
+            }
+        }
+        String id = CommandExecutor.findCardId(spec);
+        if (id == null) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, spec);
+        }
+        AbstractCard old = colored.get(slot);
+        AbstractCard card = CardLibrary.getCard(id).makeCopy();
+        if (card.type != old.type || card.rarity != old.rarity || card.color == AbstractCard.CardColor.COLORLESS) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT,
+                    id + " is " + card.rarity + " " + card.type + ", the slot " + old.rarity + " " + old.type);
+        }
+        for (int i = 0; i < upgrades && card.canUpgrade(); ++i) {
+            card.upgrade();
+        }
+        card.current_x = old.current_x;
+        card.current_y = old.current_y;
+        card.target_x = old.target_x;
+        card.target_y = old.target_y;
+        card.price = old.price;
+        colored.set(slot, card);
         GameStateListener.setTimeout(30);
     }
 
