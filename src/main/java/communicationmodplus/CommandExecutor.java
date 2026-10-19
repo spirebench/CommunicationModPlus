@@ -1273,7 +1273,10 @@ public class CommandExecutor {
             throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, "not at Neow");
         }
         int screen = (Integer) ReflectionHacks.getPrivate(room.event, com.megacrit.cardcrawl.neow.NeowEvent.class, "screenNum");
-        if (screen != 0 && screen != 10) {
+        // The first screen: 0 the first time Neow is met on a profile, 1 after
+        // (the intro tip seen), 10 with the dialog skipped. Each one's click
+        // opens the blessing, or with bossCount 0 the mini blessing.
+        if (screen != 0 && screen != 1 && screen != 10) {
             throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, "Neow is past its first screen");
         }
         try {
