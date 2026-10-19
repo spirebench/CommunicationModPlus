@@ -152,6 +152,9 @@ public class CommandExecutor {
             case "rewardpotion":
                 executeRewardPotionCommand(tokens);
                 return true;
+            case "cardreward":
+                executeCardRewardCommand(tokens);
+                return true;
             case "rng":
                 executeRngCommand(tokens);
                 return false;
@@ -211,7 +214,7 @@ public class CommandExecutor {
         if (command.equals("relic") || command.equals("card") || command.equals("maxhp") || command.equals("keys") || command.equals("act") || command.equals("floor")
                 || command.equals("sethp") || command.equals("setgold") || command.equals("setplaytime") || command.equals("deck") || command.equals("abandon") || command.equals("shopcard")
                 || command.equals("shoppotion") || command.equals("rewardpotion") || command.equals("neowmini")
-                || command.equals("rng") || command.equals("leaveroom")) {
+                || command.equals("rng") || command.equals("leaveroom") || command.equals("cardreward")) {
             // A test hook, not a move: deliberately left out of
             // available_commands so nothing that reads that list offers it.
             return isInDungeon();
@@ -1309,6 +1312,55 @@ public class CommandExecutor {
         }
         catch (IllegalAccessException | NumberFormatException e) {
             throw new InvalidCommandException("rng: " + e);
+        }
+        CommunicationMod.mustSendGameState = true;
+    }
+
+    private static Random savedCardRng = null;
+    private static int savedCardBlizz = 0;
+
+    /*
+     * cardreward save, cardreward reroll <n>: keep cardRng and the rarity
+     * offset (cardBlizzRandomizer) before a fight's rewards are made; then, on
+     * the reward screen, put both back, draw cardRng n times, and make each
+     * card reward's cards again (getRewardCards, so relics that change a
+     * reward still do). For the streamer benchmark's replay: the Watcher's
+     * Foreign Influence draws cardRng in a fight (about 3 draws a play), and
+     * the replay, which plays no cards, cannot know how often the streamer
+     * played it; it tries n until the reward is the record's.
+     */
+    private static void executeCardRewardCommand(String[] tokens) throws InvalidCommandException {
+        if (tokens.length < 2) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.MISSING_ARGUMENT);
+        }
+        if (tokens[1].equals("save")) {
+            savedCardRng = AbstractDungeon.cardRng.copy();
+            savedCardBlizz = AbstractDungeon.cardBlizzRandomizer;
+            CommunicationMod.mustSendGameState = true;
+            return;
+        }
+        if (!tokens[1].equals("reroll") || tokens.length < 3) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens[1]);
+        }
+        if (savedCardRng == null || AbstractDungeon.screen != AbstractDungeon.CurrentScreen.COMBAT_REWARD) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, "no saved cardRng, or not on a reward screen");
+        }
+        int n;
+        try {
+            n = Integer.parseInt(tokens[2]);
+        }
+        catch (NumberFormatException e) {
+            throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, tokens[2]);
+        }
+        AbstractDungeon.cardRng = savedCardRng.copy();
+        AbstractDungeon.cardBlizzRandomizer = savedCardBlizz;
+        for (int i = 0; i < n; ++i) {
+            AbstractDungeon.cardRng.random(99);
+        }
+        for (com.megacrit.cardcrawl.rewards.RewardItem item : AbstractDungeon.combatRewardScreen.rewards) {
+            if (item.type == com.megacrit.cardcrawl.rewards.RewardItem.RewardType.CARD) {
+                item.cards = AbstractDungeon.getRewardCards();
+            }
         }
         CommunicationMod.mustSendGameState = true;
     }
