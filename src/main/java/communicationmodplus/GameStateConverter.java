@@ -713,7 +713,9 @@ public class GameStateConverter {
 
     /**
      * A snapshot around one hit on a monster (PostDamageSnapshotPatch, bug
-     * #46): the monsters alone, which is all the harness reads from it. The
+     * #46) or on the player (PlayerDamageSnapshotPatch, bug #395): the
+     * monsters, and the player's HP and Block, which is all the harness
+     * reads from it. The
      * full compact snapshot copied the four piles into each of up to 64 hits
      * per command, and with a 527-card draw pile a single state carried 2.7
      * MB of them; the heap filled and the JVM hung (FZ217B50YRV2V,
@@ -742,6 +744,15 @@ public class GameStateConverter {
             monsterList.add(mstate);
         }
         snapshot.put("monsters", monsterList);
+        // The player's HP and Block at the same moment, so a hit on the
+        // player during the turn (PlayerDamageSnapshotPatch, bug #395) is
+        // seen apart from the Block the same command gained.
+        if (AbstractDungeon.player != null) {
+            HashMap<String, Object> pstate = new HashMap<String, Object>();
+            pstate.put("current_hp", AbstractDungeon.player.currentHealth);
+            pstate.put("block", AbstractDungeon.player.currentBlock);
+            snapshot.put("player", pstate);
+        }
         return snapshot;
     }
 
