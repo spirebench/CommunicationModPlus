@@ -827,6 +827,7 @@ public class GameStateConverter {
      * "misc" (int): The misc field for the card, used by cards like Ritual Dagger
      * "is_playable" (boolean): Whether the card can currently be played, though does not guarantee a target
      * "cost" (int): The current cost of the card. -2 is unplayable and -1 is X cost
+     * "free_to_play_once" (boolean, optional): Present and true when the card costs 0 until played (Setup, Forethought), which "cost" does not show
      * "upgrades" (int): The number of times the card is upgraded
      * "id" (string): The id of the card
      * "type" (string): The name of the AbstractCard.CardType enum for the card
@@ -854,6 +855,11 @@ public class GameStateConverter {
             }
         }
         jsonCard.put("cost", card.costForTurn);
+        // Setup and Forethought make a card cost 0 until it is played
+        // through freeToPlayOnce, which costForTurn does not show.
+        if (card.freeToPlayOnce) {
+            jsonCard.put("free_to_play_once", true);
+        }
         jsonCard.put("upgrades", card.timesUpgraded);
         jsonCard.put("id", card.cardID);
         jsonCard.put("type", card.type.name());
