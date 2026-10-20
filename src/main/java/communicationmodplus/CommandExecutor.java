@@ -153,8 +153,12 @@ public class CommandExecutor {
                 executeRewardPotionCommand(tokens);
                 return true;
             case "cardreward":
+                // No state change the listener sees (a saved generator, or a
+                // reward's cards remade off screen): returning true cleared
+                // its waiting flag, and in a fight nothing set it again, so
+                // the replay waited for a ready state that never came.
                 executeCardRewardCommand(tokens);
-                return true;
+                return false;
             case "rng":
                 executeRngCommand(tokens);
                 return false;
