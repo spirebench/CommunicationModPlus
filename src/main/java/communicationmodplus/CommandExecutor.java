@@ -668,6 +668,18 @@ public class CommandExecutor {
             throw new InvalidCommandException(tokens, InvalidCommandException.InvalidCommandFormat.INVALID_ARGUMENT, which);
         }
         Settings.isFinalActAvailable = true;
+        if (tokens.length > 2 && tokens[2].equals("set")) {
+            // keys <which> set: the key held at once, with no ObtainKeyEffect.
+            // The effect sets the flag only when its animation ends, which a
+            // streamer benchmark replay on the map never let happen: its
+            // keys, given for floors it dropped, were never held, and the
+            // run ended at the Act 3 bosses.
+            if (all || which.equals("ruby")) Settings.hasRubyKey = true;
+            if (all || which.equals("emerald")) Settings.hasEmeraldKey = true;
+            if (all || which.equals("sapphire")) Settings.hasSapphireKey = true;
+            GameStateListener.setTimeout(30);
+            return;
+        }
         if ((all || which.equals("ruby")) && !Settings.hasRubyKey) {
             AbstractDungeon.topLevelEffects.add(new ObtainKeyEffect(ObtainKeyEffect.KeyColor.RED));
         }
