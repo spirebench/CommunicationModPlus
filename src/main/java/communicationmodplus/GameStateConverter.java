@@ -92,6 +92,7 @@ public class GameStateConverter {
      * Sometimes present:
      * - "current_action" (list): The class name of the action in the action manager queue, if not empty
      * - "combat_state" (list): The state of the combat (draw pile, monsters, etc.)
+     * - "combat_end_monsters" (list): Once a fight is over, how each of its monsters left it
      * - "choice_list" (list): If the command is available, the possible choices for the choose command
      * @return A HashMap encoding the JSON representation of the game state
      */
@@ -144,6 +145,10 @@ public class GameStateConverter {
         }
         if(AbstractDungeon.getCurrRoom().phase.equals(AbstractRoom.RoomPhase.COMBAT)) {
             state.put("combat_state", getCombatState());
+        } else if (AbstractDungeon.getCurrRoom().phase == AbstractRoom.RoomPhase.COMPLETE
+            && AbstractDungeon.getCurrRoom().monsters != null
+            && !AbstractDungeon.getCurrRoom().monsters.monsters.isEmpty()) {
+            state.put("combat_end_monsters", getCombatEndMonsters());
         }
         state.put("screen_state", getScreenState());
 
@@ -154,6 +159,29 @@ public class GameStateConverter {
         state.put("keys", keys);
 
         return state;
+    }
+
+    /**
+     * How each monster of a finished fight left it: escaped (a Looter's or
+     * Mugger's Escape, a Gremlin Leader's minions fleeing) or dead. A fight
+     * that ended in the enemies' turn shows no state after its last enemy
+     * move, so a thief that escaped then was last seen standing, and was
+     * reported defeated (LM82821WT2K4W c246, LM8442EGJH6MT c29, bug #436).
+     * Each is {name, uid, current_hp, max_hp, escaped, dead}.
+     */
+    private static ArrayList<HashMap<String, Object>> getCombatEndMonsters() {
+        ArrayList<HashMap<String, Object>> out = new ArrayList<>();
+        for (AbstractMonster monster : AbstractDungeon.getCurrRoom().monsters.monsters) {
+            HashMap<String, Object> m = new HashMap<>();
+            m.put("name", monster.name);
+            m.put("uid", monsterUid(monster));
+            m.put("current_hp", monster.currentHealth);
+            m.put("max_hp", monster.maxHealth);
+            m.put("escaped", monster.isEscaping || monster.escaped);
+            m.put("dead", monster.isDying || monster.isDead);
+            out.add(m);
+        }
+        return out;
     }
 
     private static HashMap<String, Object> getRoomState() {
