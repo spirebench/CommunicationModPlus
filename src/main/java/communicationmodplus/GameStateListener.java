@@ -123,6 +123,9 @@ public class GameStateListener {
      * with the next regular game-state message (on turn start).
      */
     public static void captureIntermediateState(String label, int monsterIndex, String monsterName) {
+        if ("post_player_turn".equals(label)) {
+            pastPlayerTurn = true;
+        }
         if (!CommandExecutor.isInDungeon()) {
             skippedCaptures.add(label + ": not in dungeon");
             return;
@@ -144,6 +147,14 @@ public class GameStateListener {
     // ride on every ready state until the next command clears them.
     private static final ArrayList<HashMap<String, Object>> actionSnapshots = new ArrayList<HashMap<String, Object>>();
     private static final int MAX_ACTION_SNAPSHOTS = 64;
+    // Set once post_player_turn is taken, until the next command clears the
+    // snapshots. A hit snapshot taken after it is from the enemy turn or the
+    // next turn's start (Fire Breathing on a draw, Mayhem's card), which
+    // myTurn lets through once the next turn has begun: it is tagged
+    // "after_player_turn", and the harness leaves it out of the end of turn,
+    // where its later HP read as a hit and then a heal that never happened
+    // (LM7HH0TU4ZEF8 c18 "HP -15 (380→365), then HP +15 (365→380)").
+    private static boolean pastPlayerTurn = false;
 
     public static void captureActionSnapshot(String label, int monsterIndex, String monsterName) {
         if (!myTurn || !CommandExecutor.isInDungeon() || AbstractDungeon.getCurrRoom() == null
@@ -153,12 +164,14 @@ public class GameStateListener {
         }
         HashMap<String, Object> snapshot = GameStateConverter.captureHitSnapshot(label, monsterIndex, monsterName);
         if (snapshot != null) {
+            snapshot.put("after_player_turn", pastPlayerTurn);
             actionSnapshots.add(snapshot);
         }
     }
 
     public static void clearActionSnapshots() {
         actionSnapshots.clear();
+        pastPlayerTurn = false;
     }
 
     public static ArrayList<HashMap<String, Object>> getActionSnapshots() {
@@ -286,6 +299,7 @@ public class GameStateListener {
         lastAccountedTurn = -1;
         startedObtains.clear();
         actionSnapshots.clear();
+        pastPlayerTurn = false;
     }
 
     /**
