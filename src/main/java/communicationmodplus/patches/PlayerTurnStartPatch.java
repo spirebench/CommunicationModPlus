@@ -26,8 +26,13 @@
  * "pre_round_end_queue" snapshot separates the two: post_block_reset → it
  * is the start of turn, it → pre_player_turn the round's queued end.
  *
- * Skipped with the monster turn (Smoke Bomb, Vault), which also skips
- * applyEndOfTurnPowers and with it post_monsters and pre_player_turn.
+ * A turn whose monster turn is skipped (Vault's extra turn) skips
+ * applyEndOfTurnPowers and with it post_monsters and pre_player_turn, and
+ * has no round's end to queue, so PreRoundEndQueueAction is not queued.
+ * "player_turn_start" is still taken: it is the only line between the end
+ * of the turn Vault ended and the extra turn's start, and without it the
+ * extra turn's Block reset, relics and draw read as the end of the turn
+ * (LM8UWFHYQXUN4 c155, LM8NYCQXJU7HA c87, bug #443).
  */
 package communicationmodplus.patches;
 
@@ -51,10 +56,13 @@ import communicationmodplus.PreRoundEndQueueAction;
 public class PlayerTurnStartPatch {
     @SpireInsertPatch(locator=Locator.class)
     public static void Insert(GameActionManager _instance) {
-        if (AbstractDungeon.getCurrRoom() == null || AbstractDungeon.getCurrRoom().skipMonsterTurn) {
+        if (AbstractDungeon.getCurrRoom() == null) {
             return;
         }
         GameStateListener.captureIntermediateState("player_turn_start", -1, null);
+        if (AbstractDungeon.getCurrRoom().skipMonsterTurn) {
+            return;
+        }
         _instance.addToTop((AbstractGameAction)new PreRoundEndQueueAction());
     }
 
