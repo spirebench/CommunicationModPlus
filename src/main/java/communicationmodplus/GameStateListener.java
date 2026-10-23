@@ -169,6 +169,33 @@ public class GameStateListener {
         }
     }
 
+    // Set by capturePlayerDeath when it took the death into the chain, so the
+    // end of that damage() call takes the revive there too (bug #442).
+    private static boolean deathInChain = false;
+
+    /**
+     * The player's HP has reached 0 inside AbstractPlayer.damage, before a
+     * revive (PlayerDeathSnapshotPatch). In the player's turn it is a hit
+     * snapshot, between pre_player_damage and post_player_damage; otherwise
+     * a chain snapshot, which capturePostPlayerDeath follows once the revive
+     * is done.
+     */
+    public static void capturePlayerDeath() {
+        if (myTurn) {
+            captureActionSnapshot("player_death", -1, null);
+        } else {
+            captureIntermediateState("player_death", -1, null);
+            deathInChain = true;
+        }
+    }
+
+    public static void capturePostPlayerDeath() {
+        if (deathInChain) {
+            deathInChain = false;
+            captureIntermediateState("post_player_death", -1, null);
+        }
+    }
+
     public static void clearActionSnapshots() {
         actionSnapshots.clear();
         pastPlayerTurn = false;
@@ -300,6 +327,7 @@ public class GameStateListener {
         startedObtains.clear();
         actionSnapshots.clear();
         pastPlayerTurn = false;
+        deathInChain = false;
     }
 
     /**
