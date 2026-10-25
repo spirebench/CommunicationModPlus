@@ -93,6 +93,7 @@ public class GameStateConverter {
      * - "current_action" (list): The class name of the action in the action manager queue, if not empty
      * - "combat_state" (list): The state of the combat (draw pile, monsters, etc.)
      * - "combat_end_monsters" (list): Once a fight is over, how each of its monsters left it
+     * - "combat_end_intermediates" (list): Once a fight is over, the snapshots taken since the last ready state
      * - "choice_list" (list): If the command is available, the possible choices for the choose command
      * @return A HashMap encoding the JSON representation of the game state
      */
@@ -149,6 +150,16 @@ public class GameStateConverter {
             && AbstractDungeon.getCurrRoom().monsters != null
             && !AbstractDungeon.getCurrRoom().monsters.monsters.isEmpty()) {
             state.put("combat_end_monsters", getCombatEndMonsters());
+            // The snapshots taken since the last ready state: a fight that
+            // ended after the player's turn did (in the end of turn, the
+            // enemies' turn or the next turn's start) has no ready state
+            // after them, and its end of turn and enemy turn were reported
+            // nowhere (LM9KTDFY2F5UG c916, Time Warp's twelfth card and
+            // Mercury Hourglass's kill).
+            ArrayList<HashMap<String, Object>> pending = GameStateListener.getPendingIntermediates();
+            if (!pending.isEmpty()) {
+                state.put("combat_end_intermediates", pending);
+            }
         }
         state.put("screen_state", getScreenState());
 

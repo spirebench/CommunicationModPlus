@@ -327,6 +327,11 @@ public class GameStateListener {
         deathInChain = false;
     }
 
+    /** The snapshots captured since the last ready state, not yet delivered. */
+    public static ArrayList<HashMap<String, Object>> getPendingIntermediates() {
+        return new ArrayList<HashMap<String, Object>>(intermediateStates);
+    }
+
     public static ArrayList<HashMap<String, Object>> getDeliveredIntermediates() {
         return new ArrayList<HashMap<String, Object>>(deliveredStates);
     }
