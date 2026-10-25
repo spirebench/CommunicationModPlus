@@ -578,6 +578,7 @@ public class GameStateConverter {
      * "monsters" (list): A list of the enemies in the combat, including dead enemies
      * "turn" (int): The current turn (or round) number of the combat.
      * "cards_discarded_this_turn" (int): The number of cards discarded this turn.
+     * "cards_played_this_turn" (int): The number of cards played this turn, copies included, as the game counts them
      * "times_damaged" (int): The number of times the player has been damaged this combat (for Blood for Blood).
      * Note: The order of the draw pile is not currently randomized when sent to the client.
      * @return The combat state object
@@ -638,6 +639,11 @@ public class GameStateConverter {
         state.put("player", convertPlayerToJson(AbstractDungeon.player));
         state.put("turn", GameActionManager.turn);
         state.put("cards_discarded_this_turn", GameActionManager.totalDiscardedThisTurn);
+        // The cards played this turn, copies included, as the game counts
+        // them (Pocketwatch, Echo Form): a Double Tap copy that fizzled on a
+        // dead target is not one, and the harness read the play as doubled
+        // from Double Tap's amount (LM9FX7ZRV6W3M c19 "Played Feed+ twice").
+        state.put("cards_played_this_turn", AbstractDungeon.actionManager.cardsPlayedThisTurn.size());
         state.put("times_damaged", AbstractDungeon.player.damagedThisCombat);
         // Only deliver intermediate snapshots when the game is ready for
         // the agent's next command. During animations the game sends many
