@@ -55,6 +55,13 @@ public class GameStateListener {
     private static int lastDeliveredTurn = -1;
     // The last turn accounted for: delivered, or noted as missing.
     private static int lastAccountedTurn = -1;
+    // The fight (its MonsterGroup) whose post_player_turn the buffer holds.
+    // A ready state on turn 1 clears the buffer as the fight's first, unless
+    // a turn of this same fight has ended: a fight lost on turn 1 ends in a
+    // GAME_OVER that keeps the turn number, and its chain (the end of turn,
+    // the enemy turn, player_death) was cleared and never sent
+    // (LM95R05KPIIVD c184).
+    private static Object turnEndedInFight = null;
 
     /**
      * Used to indicate that something (in game logic, not external command) has been done that will change the game state,
@@ -137,6 +144,9 @@ public class GameStateListener {
         HashMap<String, Object> snapshot = GameStateConverter.captureCompactCombatSnapshot(label, monsterIndex, monsterName);
         if (snapshot != null) {
             intermediateStates.add(snapshot);
+            if ("post_player_turn".equals(label)) {
+                turnEndedInFight = AbstractDungeon.getCurrRoom().monsters;
+            }
         } else {
             skippedCaptures.add(label + ": snapshot null");
         }
@@ -262,7 +272,7 @@ public class GameStateListener {
         // A ready state carries the deck itself; an obtain started before it
         // is not the next enemy phase's.
         startedObtains.clear();
-        if (turn <= 1) {
+        if (turn <= 1 && (turnEndedInFight == null || turnEndedInFight != currentFight())) {
             // The first turn of a combat: nothing captured before it belongs
             // to it, and an earlier combat's turn numbers say nothing here.
             intermediateStates.clear();
@@ -298,6 +308,25 @@ public class GameStateListener {
         }
     }
 
+    private static Object currentFight() {
+        return AbstractDungeon.getCurrRoom() == null ? null : AbstractDungeon.getCurrRoom().monsters;
+    }
+
+    /**
+     * A fight begins (BaseMod's battle-start hook, before its first draw):
+     * nothing captured before it belongs to it.
+     */
+    public static void signalBattleStart() {
+        intermediateStates.clear();
+        deliveredStates.clear();
+        skippedCaptures.clear();
+        missingNote = null;
+        lastDeliveredTurn = -1;
+        lastAccountedTurn = -1;
+        turnEndedInFight = null;
+        deathInChain = false;
+    }
+
     public static ArrayList<HashMap<String, Object>> getDeliveredIntermediates() {
         return new ArrayList<HashMap<String, Object>>(deliveredStates);
     }
@@ -324,6 +353,7 @@ public class GameStateListener {
         missingNote = null;
         lastDeliveredTurn = -1;
         lastAccountedTurn = -1;
+        turnEndedInFight = null;
         startedObtains.clear();
         actionSnapshots.clear();
         pastPlayerTurn = false;

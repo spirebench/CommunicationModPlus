@@ -1,6 +1,7 @@
 package communicationmodplus;
 
 import basemod.*;
+import basemod.interfaces.OnStartBattleSubscriber;
 import basemod.interfaces.PostDungeonUpdateSubscriber;
 import basemod.interfaces.PostInitializeSubscriber;
 import basemod.interfaces.PostUpdateSubscriber;
@@ -30,7 +31,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 @SpireInitializer
-public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSubscriber, PostDungeonUpdateSubscriber, PreUpdateSubscriber, PreMonsterTurnSubscriber, OnStateChangeSubscriber {
+public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSubscriber, PostDungeonUpdateSubscriber, PreUpdateSubscriber, PreMonsterTurnSubscriber, OnStartBattleSubscriber, OnStateChangeSubscriber {
 
     private static Process listener;
     private static StringBuilder inputBuffer = new StringBuilder();
@@ -254,6 +255,10 @@ public class CommunicationMod implements PostInitializeSubscriber, PostUpdateSub
 
     public static void logIntermediatesMissing(int turn, int lastDeliveredTurn, java.util.List<String> skipped) {
         logger.info("No intermediate snapshots for turn " + turn + " (last delivered on turn " + lastDeliveredTurn + "); skipped captures: " + skipped);
+    }
+
+    public void receiveOnBattleStart(com.megacrit.cardcrawl.rooms.AbstractRoom room) {
+        GameStateListener.signalBattleStart();
     }
 
     public boolean receivePreMonsterTurn(AbstractMonster m) {
