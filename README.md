@@ -59,7 +59,10 @@ the snapshots with the next state, in `combat_state.intermediate_states`:
 - around the end of the round and the block resets (`post_monsters`,
   `pre_round_end_queue`, `pre_monster_block_reset`, `monster_block_reset`,
   `pre_player_turn`, `post_block_reset`);
-- before the start-of-turn relics fire (`player_turn_start`).
+- before the start-of-turn relics fire (`player_turn_start`), including at
+  the start of the extra turn Vault gives;
+- when the player's HP reaches 0 outside their own turn, before a revive
+  (`player_death`, then `post_player_death` once the revive is done).
 
 Each snapshot holds the player's HP, block, gold, powers, orbs and stance,
 relic counters, the four card piles (names and ids), every monster's HP, block
@@ -67,18 +70,36 @@ and powers, and the cards being added to the deck at that moment
 (`cards_in_flight`). A batch is repeated on every ready state until the next
 command, so a state republished in between does not lose it. A turn that
 arrives without snapshots carries `intermediate_states_missing`, saying why.
+The buffer is cleared when each fight starts, so nothing from an earlier fight
+is sent with a new one, and a fight lost on its first turn still sends its
+chain.
+
+A fight can end after the player's turn did: in the end of turn, the enemies'
+turn or the next turn's start. No ready state follows those snapshots, so the
+first state out of the fight carries them, as `combat_end_intermediates`,
+together with how each monster left the fight, as `combat_end_monsters` (its
+name, `uid`, HP, and whether it `escaped` or is `dead`): a thief that escaped
+in the enemies' turn was otherwise last seen standing.
 
 During the player's own commands, the mod also snapshots the monsters before
 and after each hit (`action_snapshots`, `pre_damage`/`post_damage`), so a
 play's damage, block absorbed and the monster's reaction can be told apart.
+Hits on the player in their turn and its end are snapshotted the same way
+(`pre_player_damage`/`post_player_damage`, and `player_death` before a
+revive), and every action snapshot also carries the player's HP and block.
+One taken after `post_player_turn` is tagged `after_player_turn`.
 
 ### More in each state
 
 - **Descriptions** (from Orak) of cards, with their current numbers filled in,
   and of powers and relics. Power text is refreshed before it is read.
 - **Cards:** `is_glowing` (the gold border of a card with a synergy right now),
-  `bottled` (the Bottled relic holding it). Hand cards' damage and block are
-  recomputed against the player's current powers before they are sent.
+  `bottled` (the Bottled relic holding it), and `free_to_play_once` on a card
+  that Setup or Forethought made free until played, which its `cost` does not
+  show. Hand cards' damage and block are recomputed against the player's
+  current powers before they are sent.
+- **Combat:** `cards_played_this_turn`, the game's own count of the turn's
+  plays, copies included (a Double Tap copy that fizzled is not one).
 - **Monsters:** a `uid` that stays the same for a monster's whole life, so two
   identical monsters can be told apart after a spawn shifts them. No monster
   is reported with the placeholder DEBUG intent (from Orak).
