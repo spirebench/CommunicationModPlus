@@ -2,7 +2,7 @@
 
 This fork of [CommunicationMod](https://github.com/ForgottenArbiter/CommunicationMod)
 is the game interface of SpireBench, an LLM agent harness for Slay the Spire.
-It is read through the [spirebench fork of spirecomm](https://github.com/spirebench/spirecomm).
+It is read through [spirecommplus](https://github.com/spirebench/spirecommplus), our fork of spirecomm.
 
 It builds on Orak's ModifiedCommunicationMod
 ([Orak](https://github.com/krafton-ai/Orak) ships it as a jar only; its
@@ -153,9 +153,9 @@ setting and the stdin/stdout protocol below are no longer used.
 
 ## Reading the state from Python
 
-[spirebench/spirecomm](https://github.com/spirebench/spirecomm), the companion
+[spirecommplus](https://github.com/spirebench/spirecommplus), the companion
 fork of spirecomm, parses CommunicationModPlus's states into Python objects,
-including every field listed above (`spirecomm.spire.game.Game.from_json`).
+including every field listed above (`spirecommplus.spire.game.Game.from_json`).
 Its `Coordinator` still uses the stdin/stdout protocol, so pair the parsers
 with a client that reads and writes the two files.
 
